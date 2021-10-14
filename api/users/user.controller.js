@@ -49,22 +49,34 @@ exports.register = (req, res) => {
                                 jwt_secret, {
                                     expiresIn: '1m',
                                     issuer: 'Beagle',
-                                    subject: 'userInfo'
-                                }, (err, token) => {
+                                    subject: 'accessToken'
+                                }, (err, accessToken) => {
                                     if (err) reject(err)
-                                    resolve(token)
+                                    jwt.sign({
+                                            id: User.user_id,
+                                            role: User.user_role
+                                        },
+                                        jwt_secret, {
+                                            expiresIn: '1h',
+                                            issuer: 'Beagle',
+                                            subject: 'refreshToken'
+                                        }, (err, refreshToken) => {
+                                            if (err) reject(err)
+                                            resolve(accessToken, refreshToken)
+                                        })
                                 })
                         });
 
                         getToken.then(
-                            token => {
+                            (accessToken, refreshToken) => {
                                 res.status(200).json({
                                     'status': 200,
                                     'msg': 'register success',
                                     'data': {
                                         'id': User.user_id,
                                         'role': User.user_role,
-                                        'token': token
+                                        'accessToken': accessToken,
+                                        'refreshToken': refreshToken
                                     }
                                 });
                             },
