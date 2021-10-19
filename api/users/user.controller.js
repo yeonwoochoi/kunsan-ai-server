@@ -21,22 +21,27 @@ exports.showAll = (req, res) => {
 };
 
 exports.register = (req, res) => {
+    console.log('register called')
     const hash = crypto.createHmac('sha256', secret)
         .update(req.body.pwd)
         .digest('base64');
     User.user_id = req.body.id;
     User.user_pwd = hash;
-    User.user_role = req.body.role;
+    User.user_name = req.body.name;
+    User.user_phone = req.body.phone;
+    User.user_organization = req.body.organization;
+    User.user_role = 'user';
 
+    console.log(`id: ${User.user_id}\n pwd: ${User.user_pwd}\n name: ${User.user_name}\n phone: ${User.user_phone}\n organization: ${User.user_organization}`)
 
     // 유저 등록
-    if (User.user_id && User.user_pwd && User.user_role) {
+    if (User.user_id && User.user_pwd && User.user_role && User.user_phone && User.user_organization && User.user_name) {
         connection.query(`SELECT user_id FROM user WHERE user_id = "${User.user_id}"`, function (error, check_result, fields) {
             if (check_result.length === 0) {
-                connection.query(`INSERT INTO user (user_id, user_pwd, user_role) VALUES ("${User.user_id }", "${User.user_pwd}", "${User.user_role}")`,
+                connection.query(`INSERT INTO user (user_id, user_pwd, user_name, user_phone, user_organization, user_role) VALUES ("${User.user_id }", "${User.user_pwd}", "${User.user_name}", "${User.user_phone}", "${User.user_organization}", "${User.user_role}")`,
                     function (error, results, fields) {
                         if (error) {
-                            console.log(error);
+                            console.log(`error : ${error}`);
                             return res.status(400).json({
                                 error: error
                             })

@@ -43,8 +43,6 @@ exports.login = (req, res) => {
     // 로그인 인증
     User.user_id = req.body.id;
     User.user_pwd = req.body.pwd;
-    console.log(req.body.id)
-    console.log(req.body.pwd)
     if (User.user_id) {
         connection.query(`SELECT user_pwd, user_role FROM user WHERE user_id = "${User.user_id}"`, function (error, results) {
             if (error) {
@@ -92,6 +90,10 @@ exports.check = (req, res) => {
             'msg': 'Token 없음'
         });
     }
+
+    console.log(`access :${accessToken}`)
+    console.log(`refresh :${refreshToken}`)
+
     const checkToken = new Promise((resolve, reject) => {
         jwt.verify(accessToken, jwt_secret, function (err, decoded) {
             if (err) {
