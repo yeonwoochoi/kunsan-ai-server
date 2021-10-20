@@ -6,37 +6,54 @@ const crypto = require('crypto');
 const secret = config.KEY.secret;
 const jwt_secret = config.KEY.jwt_secret;
 const jwt = require('jsonwebtoken');
+const {check} = require("./auth.controller");
 
-function getTokens() {
-    const accessToken = jwt.sign({
-            id: User.user_id,
-            role: User.user_role
-        },
-        jwt_secret, {
-            expiresIn: '1m',
-            issuer: 'Beagle',
-            subject: 'accessToken'
-        })
-    const refreshToken = jwt.sign({
-            id: User.user_id,
-            role: User.user_role
-        },
-        jwt_secret, {
-            expiresIn: '1h',
-            issuer: 'Beagle',
-            subject: 'refreshToken'
-        })
 
-    return {
-        'status': 200,
-        'msg': 'get token success',
-        'data': {
-            'id': User.user_id,
-            'role': User.user_role,
-            'accessToken': accessToken,
-            'refreshToken': refreshToken
-        }
-    }
+function getAccessToken (user_id, user_role) {
+    return new Promise((resolve, reject) => {
+        jwt.sign(
+            {
+                id: user_id,
+                role: user_role
+            },
+            jwt_secret,
+            {
+                expiresIn: '1m',
+                issuer: 'Beagle',
+                subject: 'accessToken'
+            },
+            (err, accessToken) => {
+                if (err) reject(err)
+                resolve(accessToken)
+            }
+        )
+    })
+}
+
+function setRefreshToken(user_id, user_role) {
+    return new Promise((resolve, reject) => {
+      jwt.sign(
+          {
+              id: user_id,
+              role: user_role
+          },
+          jwt_secret,
+          {
+              expiresIn: '1h',
+              issuer: 'Beagle',
+              subject: 'refreshToken'
+          },
+          (err, refreshToken) => {
+              if (err) reject(err)
+              connection.query(`UPDATE user SET user_token = '${refreshToken}' WHERE user_id = '${user_id}'`, function (error, results) {
+                  if (error) {
+                      reject(error)
+                  }
+                  resolve(refreshToken)
+              })
+          }
+      )
+    })
 }
 
 exports.login = (req, res) => {
@@ -61,9 +78,37 @@ exports.login = (req, res) => {
             User.user_role = results[0].user_role;
 
             if (hash === results[0].user_pwd) {
-                let result = getTokens();
-                let status = result.status;
-                res.status(status).json(result)
+                getAccessToken(User.user_id, User.user_role).then(
+                    (accessToken) => {
+                        setRefreshToken(User.user_id, User.user_role).then(
+                            (refreshToken) => {
+                                res.status(200).json({
+                                    'status': 200,
+                                    'msg': 'login success',
+                                    'data': {
+                                        'id': User.user_id,
+                                        'role': User.user_role,
+                                        'accessToken': accessToken,
+                                    }
+                                });
+                            },
+                            (err) => {
+                                console.log(err)
+                                res.status(400).json({
+                                    'status': 400,
+                                    'msg': 'login failure during setting refresh token'
+                                })
+                            }
+                        )
+                    },
+                    (err) => {
+                        console.log(err)
+                        res.status(400).json({
+                            'status': 400,
+                            'msg': 'login failure'
+                        })
+                    }
+                )
             } else {
                 res.status(400).json({
                     'status': 400,
@@ -81,57 +126,104 @@ exports.login = (req, res) => {
 
 exports.check = (req, res) => {
     // 인증 확인
-    const accessToken = req.headers['x-access-token'];
-    const refreshToken = req.headers['x-refresh-token'];
-
-    if (!accessToken && !refreshToken) {
-        res.status(400).json({
-            'status': 400,
-            'msg': 'Token 없음'
+    User.user_id = req.body.id;
+    User.user_role = 'user';
+    let accessToken = req.headers['x-access-token'];
+    let refreshToken = null;
+    if (accessToken) {
+        const checkToken = new Promise((resolve, reject) => {
+            jwt.verify(accessToken, jwt_secret, function (err, decoded) {
+                if (err) {
+                    reject(err)
+                } else{
+                    resolve(accessToken);
+                }
+            });
         });
+        checkToken.then(
+            token => {
+                res.status(200).json({
+                    'status': 200,
+                    'msg': 'Access token is still valid',
+                    'data': {
+                        'id': User.user_id,
+                        'role': User.user_role,
+                        'accessToken': token,
+                    }
+                });
+            },
+            err => {
+                console.log(`Access token is invalid: ${err}`)
+                getRefreshToken(res)
+            }
+        )
+    } else {
+        getRefreshToken(res)
     }
+};
 
-    console.log(`access :${accessToken}`)
-    console.log(`refresh :${refreshToken}`)
+function getRefreshToken(res) {
+    let refreshToken = null;
+    console.log(User.user_id)
+    connection.query(`select user_token from user where user_id = "${User.user_id}"`, function (error, results) {
+        if (error) {
+            console.log('Get refresh token from db failed')
+            res.status(400).json({
+                'status': 400,
+                'msg': 'Access Token is invalid and cannot get refresh token'
+            })
+        }
 
-    const checkToken = new Promise((resolve, reject) => {
-        jwt.verify(accessToken, jwt_secret, function (err, decoded) {
-            if (err) {
+        if (results.length > 0) {
+            refreshToken = results[0].user_token;
+            const checkRefreshToken = new Promise(((resolve, reject) => {
                 jwt.verify(refreshToken, jwt_secret, function (err, decoded) {
                     if (err) reject(err)
                     else {
-                        let result = getTokens();
-                        result.data.refreshToken = null;
-                        result.msg = "Access token is reissued"
-                        res.status(result.status).json(result);
+                        resolve(refreshToken)
                     }
                 })
-            } else{
-                resolve(accessToken);
-            }
-        });
-    });
-
-    checkToken.then(
-        token => {
-            console.log(token);
-            res.status(200).json({
-                'status': 200,
-                'msg': 'Access token is valid',
-                'data': {
-                    'id': User.user_id,
-                    'role': User.user_role,
-                    'accessToken': token,
-                    'refreshToken': null,
+            }))
+            checkRefreshToken.then(
+                (refreshToken) => {
+                    console.log('Refresh token is valid')
+                    getAccessToken(User.user_id, User.user_role).then(
+                        (accessToken)=>{
+                            res.status(200).json({
+                                'status': 200,
+                                'msg': 'Reissuing the access token',
+                                'data': {
+                                    'id': User.user_id,
+                                    'role': User.user_role,
+                                    'accessToken': accessToken,
+                                }
+                            });
+                        },
+                        (err) => {
+                            console.log(`Error occurred while reissuing the access token: ${err}`)
+                            res.status(400).json({
+                                'status': 400,
+                                'msg': `Error occurred while reissuing the access token.`
+                            })
+                        }
+                    )
+                },
+                (err) => {
+                    console.log(`Refresh token is invalid`)
+                    res.status(400).json({
+                        'status': 400,
+                        'msg': `Both token is invalid. Please login again.`
+                    })
                 }
-            });
-        },
-        err => {
-            console.log(err)
+            )
+        }
+        else {
+            console.log(`Access token is invalid and Refresh token is null`)
             res.status(400).json({
                 'status': 400,
-                'msg': 'Both tokens are invalid'
+                'msg': `Access token is invalid and Refresh token is null. Please login again`
             })
         }
-    )
-};
+    });
+
+}

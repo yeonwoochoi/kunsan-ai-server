@@ -4,7 +4,7 @@ const controller = require('./user.controller');
 
 router.get('/', controller.showAll);
 router.post('/register', controller.register);
-router.delete('/:id', controller.destroy);
+router.post('/logout', controller.logout);
 
 
 module.exports = router;

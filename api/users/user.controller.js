@@ -67,29 +67,43 @@ exports.register = (req, res) => {
                                             subject: 'refreshToken'
                                         }, (err, refreshToken) => {
                                             if (err) reject(err)
-                                            resolve(accessToken, refreshToken)
+                                            let tokens = {
+                                                accessToken: accessToken,
+                                                refreshToken: refreshToken
+                                            }
+                                            resolve(tokens)
                                         })
                                 })
                         });
 
                         getToken.then(
-                            (accessToken, refreshToken) => {
-                                res.status(200).json({
-                                    'status': 200,
-                                    'msg': 'register success',
-                                    'data': {
-                                        'id': User.user_id,
-                                        'role': User.user_role,
-                                        'accessToken': accessToken,
-                                        'refreshToken': refreshToken
+                            (tokens) => {
+                                console.log(`user : ${User.user_id}`)
+                                console.log(`refresh : ${tokens.refreshToken}`)
+                                connection.query(`UPDATE user SET user_token = "${tokens.refreshToken}" WHERE user_id = "${User.user_id}"`, function (error, results) {
+                                    if (error) {
+                                        console.log('refresh token 을 db에 저장중 error 발생 (register)')
+                                        res.status(400).json({
+                                            'status': 400,
+                                            'msg': 'register failure'
+                                        })
                                     }
-                                });
+                                    res.status(200).json({
+                                        'status': 200,
+                                        'msg': 'register success',
+                                        'data': {
+                                            'id': User.user_id,
+                                            'role': User.user_role,
+                                            'accessToken': tokens.accessToken,
+                                        }
+                                    });
+                                })
                             },
                             err => {
                                 console.log(err)
                                 res.status(400).json({
                                     'status': 400,
-                                    'msg': 'login failure'
+                                    'msg': 'register failure'
                                 })
                             }
                         );
@@ -110,22 +124,21 @@ exports.register = (req, res) => {
 };
 
 
-exports.destroy = (req, res) => {
-    // 유저 삭제
-    const id = req.params.id;
-    connection.query(`DELETE FROM user WHERE user_id = "${id}"`, function (error, results, fields) {
+exports.logout = (req, res) => {
+    // Refresh token 삭제
+    const id = req.body.id;
+    connection.query(`UPDATE user SET user_token = null WHERE user_id = "${id}"`, function (error, results, fields) {
         if (error) {
             console.log(error);
-            return res.status(400).json({
-                error: error
-            })
-        }
-        if (results.length === 0) {
-            console.log('찾는값 없음');
-            return res.status(400).json({
-                error: 'Incorrect id'
+            res.status(400).json({
+                'status': 400,
+                'msg': 'Delete refresh token failed'
             });
         }
-        res.status(201).send('success');
+        console.log(`Delete refresh token success : ${results}`)
+        res.status(200).json({
+            'status': 200,
+            'msg': 'logout success'
+        });
     });
 };
