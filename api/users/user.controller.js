@@ -1,5 +1,5 @@
 const mysql = require('mysql');
-const config = require('../../config');
+const config = require('../../config/config');
 const connection = mysql.createConnection(config.SQL);
 let User = require('../../models/user/user');
 const crypto = require('crypto');
