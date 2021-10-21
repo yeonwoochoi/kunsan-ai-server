@@ -2,6 +2,7 @@
 /config/config.js
 /config/email.js
 
+
 # Logs
 logs
 *.log
