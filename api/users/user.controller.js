@@ -7,21 +7,21 @@ const jwt = require("jsonwebtoken");
 const secret = config.KEY.secret;
 const jwt_secret = config.KEY.jwt_secret;
 const query = require('../../config/query')
+const ApiError = require("../error/api-error");
 
 
-exports.showAll = (req, res) => {
+exports.showAll = (req, res, next) => {
     connection.query(`SELECT * from user`, function (error, results, fields) {
         if (error) {
-            console.log(error);
-            return res.status(400).json({
-                error: error
-            })
+            console.log('show all users failure');
+            next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+            return;
         }
-        return res.json(results);
+        return res.status(200).json(results);
     });
 };
 
-exports.register = (req, res) => {
+exports.register = (req, res, next) => {
     console.log('register called')
     const hash = crypto.createHmac('sha256', secret)
         .update(req.body.pwd)
@@ -50,10 +50,9 @@ exports.register = (req, res) => {
                 })
                 connection.query(registerQuery, function (error, results, fields) {
                     if (error) {
-                        console.log(`error : ${error}`);
-                        return res.status(400).json({
-                            error: error
-                        })
+                        console.log('Register failure during input user data into db');
+                        next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+                        return;
                     }
                     const getToken = new Promise((resolve, reject) => {
                         jwt.sign({
@@ -93,14 +92,11 @@ exports.register = (req, res) => {
                             connection.query(updateTokenQuery, function (error, results) {
                                 if (error) {
                                     console.log('refresh token 을 db에 저장중 error 발생 (register)')
-                                    res.status(400).json({
-                                        'status': 400,
-                                        'msg': 'register failure'
-                                    })
+                                    next(ApiError.badRequest('Register failure'));
                                 }
                                 res.status(200).json({
                                     'status': 200,
-                                    'msg': 'register success',
+                                    'msg': 'Register success',
                                     'data': {
                                         'id': User.user_id,
                                         'role': User.user_role,
@@ -111,45 +107,33 @@ exports.register = (req, res) => {
                         },
                         err => {
                             console.log(err)
-                            res.status(400).json({
-                                'status': 400,
-                                'msg': 'register failure'
-                            })
+                            next(ApiError.badRequest('Register failure'));
                         }
                     );
                 });
             } else {
-                res.status(400).json({
-                    'status': 400,
-                    'msg': '중복 ID'
-                });
+                next(ApiError.badRequest('Email is already registered'));
             }
         });
     } else {
-        res.status(400).json({
-            'status': 400,
-            'msg': '값을 다 채워주세요'
-        });
+        next(ApiError.badRequest('Please fill in all the values'));
     }
 };
 
 
-exports.resetPwd = (req, res) => {
+exports.resetPwd = (req, res, next) => {
     const {email} = req.body;
     const temp_pwd = randomPwdGenerator();
     const selectQuery = query.selectQuery('user', ['user_id'], {'user_id': email})
     connection.query(selectQuery, function (error, check_result, fields) {
         if (error) {
-            res.status(400).json({
-                'status': 400,
-                'msg': 'email auth for reset password failure'
-            })
+            console.log('Email auth for reset password failure')
+            next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+            return;
         }
         if (check_result.length === 0) {
-            res.status(400).json({
-                'status': 400,
-                'msg': '가입되지 않은 이메일입니다.'
-            });
+            console.log('Email is not registered')
+            next(ApiError.badRequest('Email is not registered'));
         } else {
             const hash = crypto.createHmac('sha256', secret)
                 .update(temp_pwd)
@@ -157,11 +141,9 @@ exports.resetPwd = (req, res) => {
             const updatePwdQuery = query.updateQuery('user', {'user_pwd': hash}, {'user_id': email});
             connection.query(updatePwdQuery, function (error, results, fields) {
                 if (error) {
-                    console.log(`error occurred during reset password : ${error}`);
-                    res.status(400).json({
-                        'status': 400,
-                        'msg': 'Reset password failed'
-                    })
+                    console.log(`Error occurred during reset password : ${error}`);
+                    next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+                    return;
                 }
                 console.log(`Reset password success : ${results}`)
                 res.status(200).json({
@@ -177,22 +159,20 @@ exports.resetPwd = (req, res) => {
 }
 
 
-exports.logout = (req, res) => {
+exports.logout = (req, res, next) => {
     // Refresh token 삭제
     const id = req.body.id;
     const removeTokenQuery = query.updateQuery('user', {'user_token': null}, {'user_id': id})
     connection.query(removeTokenQuery, function (error, results, fields) {
         if (error) {
             console.log(error);
-            res.status(400).json({
-                'status': 400,
-                'msg': 'Delete refresh token failed'
-            });
+            next(ApiError.badRequest('Logout failure'));
+            return;
         }
         console.log(`Delete refresh token success : ${results}`)
         res.status(200).json({
             'status': 200,
-            'msg': 'logout success'
+            'msg': 'Logout success'
         });
     });
 };

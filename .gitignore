@@ -1,6 +1,7 @@
 # Project exclude paths
 /config/config.js
 /config/email.js
+/config/query.js
 
 # Logs
 logs
