@@ -7,6 +7,7 @@ const secret = config.KEY.secret;
 const jwt_secret = config.KEY.jwt_secret;
 const jwt = require('jsonwebtoken');
 const {transporter} = require("../../config/email");
+const query = require("../../config/query");
 
 function getAccessToken (user_id, user_role) {
     return new Promise((resolve, reject) => {
@@ -44,7 +45,8 @@ function setRefreshToken(user_id, user_role) {
           },
           (err, refreshToken) => {
               if (err) reject(err)
-              connection.query(`UPDATE user SET user_token = '${refreshToken}' WHERE user_id = '${user_id}'`, function (error, results) {
+              const updateRefreshTokenQuery = query.updateQuery('user', {'user_token': refreshToken}, {'user_id': user_id});
+              connection.query(updateRefreshTokenQuery, function (error, results) {
                   if (error) {
                       reject(error)
                   }
@@ -58,7 +60,8 @@ function setRefreshToken(user_id, user_role) {
 function getRefreshToken(res) {
     let refreshToken = null;
     console.log(User.user_id)
-    connection.query(`select user_token from user where user_id = "${User.user_id}"`, function (error, results) {
+    const selectTokenQuery = query.selectQuery('user', ['user_token'], {'user_id': User.user_id})
+    connection.query(selectTokenQuery, function (error, results) {
         if (error) {
             console.log('Get refresh token from db failed')
             res.status(400).json({
@@ -134,11 +137,12 @@ exports.emailAuth = async (req, res) => {
         subject: "[Vada]인증 관련 이메일 입니다.",
         text: `<p>Vada 사이트로 돌아가 아래 인증번호 6자리를 입력해주세요</p>\n<h3>${number}</h3>`
     }
-    connection.query(`SELECT user_id FROM user WHERE user_id = "${email}"`, async function (error, check_result, fields) {
+    const selectQuery = query.selectQuery('user', ['user_id'], {'user_id': email});
+    connection.query(selectQuery, async function (error, check_result, fields) {
         if (error) {
             res.status(400).json({
                 'status': 400,
-                'msg': 'email auth failure'
+                'msg': 'email auth for sign up failure'
             })
         }
         if (check_result.length > 0) {
@@ -149,10 +153,57 @@ exports.emailAuth = async (req, res) => {
         } else {
             const result = await transporter.sendMail(mailOptions, (error, response) => {
                 if (error) {
-                    console.log(`Error occurred while sending member registration verification email : ${error}`)
+                    console.log(`Error occurred while sending member registration verification email for sign up : ${error}`)
                     res.status(400).json({
                         'status': 400,
-                        'msg': 'email auth failure'
+                        'msg': 'email auth for sign up failure'
+                    })
+                } else {
+                    res.status(200).json({
+                        'status': 200,
+                        'msg': 'Successfully sending verification code by e-mail',
+                        'data': {
+                            'id': User.user_id,
+                            'role': User.user_role,
+                            'authNum': number,
+                        }
+                    })
+                }
+                transporter.close();
+            })
+        }
+    })
+}
+
+exports.emailCheck = async (req, res) => {
+    const number = generateRandom(111111, 999999);
+    const {email} = req.body;
+    const mailOptions = {
+        from: 'chldusdn20@gmail.com',
+        to: email,
+        subject: "[Vada]인증 관련 이메일 입니다.",
+        text: `<p>Vada 사이트로 돌아가 아래 인증번호 6자리를 입력해주세요</p>\n<h3>${number}</h3>`
+    }
+    const selectQuery = query.selectQuery('user', ['user_id'], {'user_id': email});
+    connection.query(selectQuery, async function (error, check_result, fields) {
+        if (error) {
+            res.status(400).json({
+                'status': 400,
+                'msg': 'email auth for reset password failure'
+            })
+        }
+        if (check_result.length === 0) {
+            res.status(400).json({
+                'status': 400,
+                'msg': '가입되지 않은 이메일입니다.'
+            });
+        } else {
+            const result = await transporter.sendMail(mailOptions, (error, response) => {
+                if (error) {
+                    console.log(`Error occurred while sending member registration verification email for reset pwd : ${error}`)
+                    res.status(400).json({
+                        'status': 400,
+                        'msg': 'email auth for reset password failure'
                     })
                 } else {
                     res.status(200).json({
@@ -176,7 +227,8 @@ exports.login = (req, res) => {
     User.user_id = req.body.id;
     User.user_pwd = req.body.pwd;
     if (User.user_id) {
-        connection.query(`SELECT user_pwd, user_role FROM user WHERE user_id = "${User.user_id}"`, function (error, results) {
+        const selectQuery = query.selectQuery('user', ['user_pwd', 'user_role'], {'user_id': User.user_id});
+        connection.query(selectQuery, function (error, results) {
             if (error) {
                 console.log(error)
                 res.status(400).json({
