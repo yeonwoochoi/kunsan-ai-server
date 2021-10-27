@@ -121,11 +121,13 @@ let generateRandom = (min, max) => {
 exports.emailAuth = async (req, res, next) => {
     const number = generateRandom(111111, 999999);
     const {email} = req.body;
+    let email_form = require('../../views/email-form.js').form;
+    const email_form_new = email_form.replace("$authNum", number)
     const mailOptions = {
         from: 'chldusdn20@gmail.com',
         to: email,
         subject: "[Vada]인증 관련 이메일 입니다.",
-        text: `<p>Vada 사이트로 돌아가 아래 인증번호 6자리를 입력해주세요</p>\n<h3>${number}</h3>`
+        html: email_form_new
     }
     const selectQuery = query.selectQuery('user', ['user_id'], {'user_id': email});
     connection.query(selectQuery, async function (error, check_result, fields) {
@@ -160,11 +162,13 @@ exports.emailAuth = async (req, res, next) => {
 exports.emailCheck = async (req, res, next) => {
     const number = generateRandom(111111, 999999);
     const {email} = req.body;
+    let email_form = require('../../views/email-form.js').form;
+    const email_form_new = email_form.replace("$authNum", number)
     const mailOptions = {
         from: 'chldusdn20@gmail.com',
         to: email,
         subject: "[Vada]인증 관련 이메일 입니다.",
-        text: `<p>Vada 사이트로 돌아가 아래 인증번호 6자리를 입력해주세요</p>\n<h3>${number}</h3>`
+        html: email_form_new
     }
     const selectQuery = query.selectQuery('user', ['user_id'], {'user_id': email});
     connection.query(selectQuery, async function (error, check_result, fields) {
