@@ -10,7 +10,8 @@ const {transporter} = require("../../config/email");
 const query = require("../../config/query");
 const ApiError = require("../error/api-error");
 
-function getAccessToken (user_id, user_role) {
+
+function createAccessToken (user_id, user_role) {
     return new Promise((resolve, reject) => {
         jwt.sign(
             {
@@ -30,6 +31,7 @@ function getAccessToken (user_id, user_role) {
         )
     })
 }
+
 
 function setRefreshToken(user_id, user_role) {
     return new Promise((resolve, reject) => {
@@ -58,64 +60,76 @@ function setRefreshToken(user_id, user_role) {
     })
 }
 
-function getRefreshToken(res, next) {
+function getRefreshToken(user_id) {
     let refreshToken = null;
-    console.log(User.user_id)
-    const selectTokenQuery = query.selectQuery('user', ['user_token'], {'user_id': User.user_id})
-    connection.query(selectTokenQuery, function (error, results) {
-        if (error) {
-            console.log('Get refresh token from db failed')
-            next(ApiError.badRequest('Get refresh token from db failed'))
-            return;
-        }
-
-        if (results.length > 0) {
-            refreshToken = results[0].user_token;
-            const checkRefreshToken = new Promise(((resolve, reject) => {
-                jwt.verify(refreshToken, jwt_secret, function (err, decoded) {
-                    if (err) reject(err)
-                    else {
-                        resolve(refreshToken)
-                    }
+    const selectTokenQuery = query.selectQuery('user', ['user_token'], {'user_id': user_id})
+    return new Promise((resolve, reject) => {
+        connection.query(selectTokenQuery, function (error, results) {
+            if (error) {
+                console.log('Get refresh token from db failed')
+                reject({
+                    'status': 400,
+                    'msg': 'Get refresh token from db failed'
                 })
-            }))
-            checkRefreshToken.then(
-                (refreshToken) => {
-                    console.log('Refresh token is valid')
-                    getAccessToken(User.user_id, User.user_role).then(
-                        (accessToken)=>{
-                            res.status(200).json({
-                                'status': 200,
-                                'msg': 'Reissuing the access token',
-                                'data': {
-                                    'id': User.user_id,
-                                    'role': User.user_role,
-                                    'accessToken': accessToken,
-                                }
-                            });
-                        },
-                        (err) => {
-                            console.log(`Error occurred while reissuing the access token: ${err}`)
-                            next(ApiError.badRequest(`Error occurred while reissuing the access token.`))
+            }
+            else if (results.length > 0) {
+                refreshToken = results[0].user_token;
+                const checkToken = new Promise(((resolve, reject) => {
+                    jwt.verify(refreshToken, jwt_secret, function (err, decoded) {
+                        if (err) {
+                            reject(err)
                         }
-                    )
-                },
-                (err) => {
-                    console.log(`Refresh token is invalid`)
-                    next(ApiError.badRequest(`Both token is invalid. Please login again.`))
-                }
-            )
-        }
-        else {
-            console.log(`Access token is invalid and Refresh token is null`)
-            next(ApiError.badRequest(`Access token is invalid and Refresh token is null. Please login again`))
-        }
+                        else {
+                            resolve(refreshToken)
+                        }
+                    })
+                }))
+                checkToken.then(
+                    (refreshToken) => {
+                        console.log('Refresh token is valid')
+                        createAccessToken(user_id, User.user_role).then(
+                            (accessToken) => {
+                                resolve({
+                                    'status': 200,
+                                    'msg': 'Reissuing the access token',
+                                    'data': {
+                                        'id': user_id,
+                                        'role': User.user_role,
+                                        'accessToken': accessToken,
+                                    }
+                                })
+                            },
+                            (err) => {
+                                console.log(`Error occurred while reissuing the access token: ${err}`)
+                                reject({
+                                    'status': 400,
+                                    'msg': `Error occurred while reissuing the access token.`,
+                                })
+                            }
+                        )
+                    },
+                    (err) => {
+                        console.log(`Refresh token is invalid`)
+                        reject({
+                            'status': 400,
+                            'msg': `Both token is invalid. Please login again.`,
+                        })
+                    }
+                )
+            }
+            else {
+                console.log(`Access token is invalid and Refresh token is null`)
+                reject({
+                    'status': 400,
+                    'msg': `Access token is invalid and Refresh token is null. Please login again`,
+                })
+            }
+        });
     });
 }
 
 let generateRandom = (min, max) => {
-    let randomNum = Math.floor(Math.random() * (max - min + 1)) + min;
-    return randomNum;
+    return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 exports.emailAuth = async (req, res, next) => {
@@ -223,7 +237,7 @@ exports.login = (req, res, next) => {
                 User.user_role = results[0].user_role;
 
                 if (hash === results[0].user_pwd) {
-                    getAccessToken(User.user_id, User.user_role).then(
+                    createAccessToken(User.user_id, User.user_role).then(
                         (accessToken) => {
                             setRefreshToken(User.user_id, User.user_role).then(
                                 (refreshToken) => {
@@ -271,7 +285,7 @@ exports.check = (req, res, next) => {
         const checkToken = new Promise((resolve, reject) => {
             jwt.verify(accessToken, jwt_secret, function (err, decoded) {
                 if (err) {
-                    reject(err)
+                    reject('Access token is invalid')
                 } else{
                     resolve(accessToken);
                 }
@@ -279,23 +293,49 @@ exports.check = (req, res, next) => {
         });
         checkToken.then(
             token => {
-                res.status(200).json({
-                    'status': 200,
-                    'msg': 'Access token is still valid',
-                    'data': {
-                        'id': User.user_id,
-                        'role': User.user_role,
-                        'accessToken': token,
-                    }
-                });
+                console.log('Access token is valid')
+                let payload = parseJwt(token)
+                if (payload.id === req.body.id) {
+                    res.status(200).json({
+                        'status': 200,
+                        'msg': 'Access token is valid',
+                        'data': {
+                            'id': req.body.id,
+                            'role': User.user_role,
+                            'accessToken': token,
+                        }
+                    })
+                } else {
+                    next(ApiError.badRequest('Invalid access. Please logout and try again.'));
+                }
             },
             err => {
-                console.log(`Access token is invalid: ${err}`)
-                getRefreshToken(res, next)
+                console.log(err)
+                getRefreshToken(req.body.id).then(
+                    (result) => {
+                        res.status(200).json(result);
+                    },
+                    (error) => {
+                        next(ApiError.badRequest(err));
+                    }
+                )
             }
         )
     } else {
-        getRefreshToken(res, next)
+        getRefreshToken(req.body.id).then(
+            (result) => {
+                res.status(200).json(result);
+            },
+            (error) => {
+                next(ApiError.badRequest(error.msg));
+            }
+        )
     }
 };
+
+function parseJwt(token) {
+    let base64Payload = token.split('.')[1];
+    let payload = Buffer.from(base64Payload, 'base64');
+    return JSON.parse(payload.toString());
+}
 

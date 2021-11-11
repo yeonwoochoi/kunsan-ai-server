@@ -2,6 +2,8 @@
 /config/config.js
 /config/email.js
 /config/query.js
+/config/*.js
+/config/
 
 # Logs
 logs
