@@ -105,10 +105,11 @@ exports.readAll = (req, res, next) => {
             let totalResults = [];
             for (let i = 0; i < results.length; i++) {
                 let row = {
-                    id: results[i].idx,
+                    no: i+1,
+                    idx: results[i].idx,
                     title: results[i].board_title,
                     content: results[i].board_content,
-                    created_at: results[i].board_created_at,
+                    created_at: results[i].board_created_at.toISOString().split("T")[0],
                     view_count: results[i].board_view_count,
                     importance: results[i].board_importance,
                     author: results[i].user_id,
@@ -116,9 +117,9 @@ exports.readAll = (req, res, next) => {
                     attach: []
                 };
                 try {
-                    let asyncResults = await Promise.all([getUserName(row.author), getBoardComments(row.id), getBoardFiles(row.id)]);
-                    row.comments = asyncResults[0];
-                    row.author = asyncResults[1];
+                    let asyncResults = await Promise.all([getUserName(row.author), getBoardComments(row.idx), getBoardFiles(row.idx)]);
+                    row.author = asyncResults[0];
+                    row.comments = asyncResults[1];
                     row.attach = asyncResults[2];
                     totalResults.push(row)
                 } catch (e) {
@@ -142,20 +143,117 @@ exports.readAll = (req, res, next) => {
     })
 }
 
-exports.addViewCount = (req, res, next) => {
+exports.read = (req, res, next) => {
+    const {idx} = req.params;
+    const selectAllQuery = `SELECT * FROM board where idx = ${idx}`
+    connection.query(selectAllQuery, async function (error, results, fields) {
+        if (error) {
+            console.log('Error occurred during reading board data')
+            next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+            return;
+        }
+        if (results.length > 0) {
+            let result = {
+                idx: results[0].idx,
+                title: results[0].board_title,
+                content: results[0].board_content,
+                created_at: results[0].board_created_at.toISOString().split("T")[0],
+                view_count: results[0].board_view_count,
+                importance: results[0].board_importance,
+                author: results[0].user_id,
+                comments: [],
+                attach: []
+            };
+            try {
+                let asyncResults = await Promise.all([getUserName(result.author), getBoardComments(result.idx), getBoardFiles(result.idx)]);
+                result.author = asyncResults[0];
+                result.comments = asyncResults[1];
+                result.attach = asyncResults[2];
+            } catch (e) {
+                next(ApiError.badRequest(e));
+            }
+            res.status(200).json({
+                msg: 'Read board data success',
+                status: 200,
+                data: result
+            })
+        }
+        else {
+            console.log('No board data')
+            res.status(200).json({
+                msg: 'There is no data',
+                status: 200,
+                data: {}
+            })
+        }
+    })
+}
 
+exports.addViewCount = (req, res, next) => {
+    const {idx} = req.params;
+    const updateQuery = `UPDATE board SET board_view_count = board_view_count + 1 WHERE idx = ${idx}`
+    console.log(updateQuery)
+
+    connection.query(updateQuery, function (error, results, fields) {
+        if (error) {
+            console.log('Error occurred during updating board view count')
+            next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+            return;
+        }
+        if (results.affectedRows > 0 && results.changedRows > 0) {
+            res.status(200).json({
+                msg: 'Updating board view count success',
+                status: 200,
+            })
+        } else {
+            next(ApiError.badRequest('There is no board content corresponding to the index in request body. Please check again.'));
+        }
+    })
 }
 
 exports.update = (req, res, next) => {
-
+    const {user_id, board_id} = req.body;
+    checkAuthor(user_id, board_id).then(
+        (isSame) => {
+            if (isSame) {
+                res.status(200).json({
+                    data: isSame
+                })
+            }
+            else {
+                next(ApiError.badRequest('Only the author or admin can edit it.'));
+            }
+        },
+        (err) => {
+            next(ApiError.badRequest(err));
+        }
+    )
 }
 
 exports.delete = (req, res, next) => {
+
 
 }
 
 exports.addComment = (req, res, next) => {
 
+
+}
+
+function checkAuthor(user_id, board_id) {
+    return new Promise((resolve, reject) => {
+        const checkQuery = `select (select user_id from board where idx = "${board_id}") = ("${user_id}") as is_same`
+        connection.query(checkQuery, async function (error, results, fields) {
+            if (error) {
+                reject('There is a problem with the server. Please try again in a few minutes.')
+            }
+            else if (results[0]['is_same'] === 1) {
+                resolve(true)
+            } else {
+                resolve(false)
+            }
+        })
+    })
 }
 
 function getUserName(user_id) {
@@ -199,14 +297,17 @@ function getBoardComments(board_id, isLatestOrder = true) {
 
 function getBoardFiles(board_id) {
     return new Promise(((resolve, reject) => {
-        const selectQuery = query.selectQuery('board_files', ['board_files_name'], {board_id: board_id});
+        const selectQuery = query.selectQuery('board_files', ['board_files_name', 'board_files_link'], {board_id: board_id});
         connection.query(selectQuery, async function (error, results, fields) {
             if (error) {
                 reject('There is a problem with the server. Please try again in a few minutes.')
             }
             else if (results.length > 0) {
                 resolve(results.map(x => {
-                    return `${address.ip}:${address.port}/${address.path}/${x.board_files_name}`
+                    return {
+                        link: `${address.ip}:${address.port}/${address.path}/${x.board_files_link}`,
+                        name: x.board_files_name
+                    }
                 }))
             } else {
                 resolve([])
