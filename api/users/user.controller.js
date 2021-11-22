@@ -21,6 +21,7 @@ exports.showAll = (req, res, next) => {
     });
 };
 
+
 exports.register = (req, res, next) => {
     console.log('register called')
     const hash = crypto.createHmac('sha256', secret)

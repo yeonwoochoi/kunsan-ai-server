@@ -32,7 +32,6 @@ function createAccessToken (user_id, user_role) {
     })
 }
 
-
 function setRefreshToken(user_id, user_role) {
     return new Promise((resolve, reject) => {
       jwt.sign(
@@ -62,7 +61,8 @@ function setRefreshToken(user_id, user_role) {
 
 function getRefreshToken(user_id) {
     let refreshToken = null;
-    const selectTokenQuery = query.selectQuery('user', ['user_token'], {'user_id': user_id})
+    let user_role = null;
+    const selectTokenQuery = query.selectQuery('user', ['user_token', 'user_role'], {'user_id': user_id})
     return new Promise((resolve, reject) => {
         connection.query(selectTokenQuery, function (error, results) {
             if (error) {
@@ -74,6 +74,7 @@ function getRefreshToken(user_id) {
             }
             else if (results.length > 0) {
                 refreshToken = results[0].user_token;
+                user_role = results[0].user_role;
                 const checkToken = new Promise(((resolve, reject) => {
                     jwt.verify(refreshToken, jwt_secret, function (err, decoded) {
                         if (err) {
@@ -87,14 +88,14 @@ function getRefreshToken(user_id) {
                 checkToken.then(
                     (refreshToken) => {
                         console.log('Refresh token is valid')
-                        createAccessToken(user_id, User.user_role).then(
+                        createAccessToken(user_id, user_role).then(
                             (accessToken) => {
                                 resolve({
                                     'status': 200,
                                     'msg': 'Reissuing the access token',
                                     'data': {
                                         'id': user_id,
-                                        'role': User.user_role,
+                                        'role': user_role,
                                         'accessToken': accessToken,
                                     }
                                 })
@@ -216,11 +217,12 @@ exports.emailCheck = async (req, res, next) => {
 
 exports.login = (req, res, next) => {
     // 로그인 인증
-    User.user_id = req.body.id;
-    User.user_pwd = req.body.pwd;
+    const user_id = req.body.id;
+    const user_pwd = req.body.pwd;
+    let user_role = null;
 
-    if (User.user_id) {
-        const selectQuery = query.selectQuery('user', ['user_pwd', 'user_role'], {'user_id': User.user_id});
+    if (user_id) {
+        const selectQuery = query.selectQuery('user', ['user_pwd', 'user_role'], {'user_id': user_id});
         connection.query(selectQuery, function (error, results) {
             if (error) {
                 console.log(error)
@@ -231,22 +233,22 @@ exports.login = (req, res, next) => {
                 console.log(results);
 
                 const hash = crypto.createHmac('sha256', secret)
-                    .update(req.body.pwd)
+                    .update(user_pwd)
                     .digest('base64');
 
-                User.user_role = results[0].user_role;
+                user_role = results[0].user_role;
 
                 if (hash === results[0].user_pwd) {
-                    createAccessToken(User.user_id, User.user_role).then(
+                    createAccessToken(user_id, user_role).then(
                         (accessToken) => {
-                            setRefreshToken(User.user_id, User.user_role).then(
+                            setRefreshToken(user_id, user_role).then(
                                 (refreshToken) => {
                                     res.status(200).json({
                                         'status': 200,
                                         'msg': 'Login success',
                                         'data': {
-                                            'id': User.user_id,
-                                            'role': User.user_role,
+                                            'id': user_id,
+                                            'role': user_role,
                                             'accessToken': accessToken,
                                         }
                                     });
@@ -277,8 +279,7 @@ exports.login = (req, res, next) => {
 
 exports.check = (req, res, next) => {
     // 인증 확인
-    User.user_id = req.body.id;
-    User.user_role = 'user';
+    const user_id = req.body.id;
     let accessToken = req.headers['x-access-token'];
     let refreshToken = null;
     if (accessToken) {
@@ -295,13 +296,13 @@ exports.check = (req, res, next) => {
             token => {
                 console.log('Access token is valid')
                 let payload = parseJwt(token)
-                if (payload.id === req.body.id) {
+                if (payload.id === user_id) {
                     res.status(200).json({
                         'status': 200,
                         'msg': 'Access token is valid',
                         'data': {
-                            'id': req.body.id,
-                            'role': User.user_role,
+                            'id': user_id,
+                            'role': payload.role,
                             'accessToken': token,
                         }
                     })
@@ -311,7 +312,7 @@ exports.check = (req, res, next) => {
             },
             err => {
                 console.log(err)
-                getRefreshToken(req.body.id).then(
+                getRefreshToken(user_id).then(
                     (result) => {
                         res.status(200).json(result);
                     },
@@ -322,7 +323,7 @@ exports.check = (req, res, next) => {
             }
         )
     } else {
-        getRefreshToken(req.body.id).then(
+        getRefreshToken(user_id).then(
             (result) => {
                 res.status(200).json(result);
             },

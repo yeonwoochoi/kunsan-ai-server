@@ -3,20 +3,32 @@ const updateQuery = (table, newValues, where) => {
 
     const updateKeys = Object.keys(newValues);
     for (let i = 0; i < updateKeys.length; i++) {
-        if (i === updateKeys.length - 1) {
-            query += `${updateKeys[i]} = "${newValues[updateKeys[i]]}" `
+        let value;
+        if (typeof newValues[updateKeys[i]] === "string") {
+            value = newValues[updateKeys[i]].replace(/'/g, "''")
         } else {
-            query += `${updateKeys[i]} = "${newValues[updateKeys[i]]}", `
+            value = newValues[updateKeys[i]]
+        }
+        if (i === updateKeys.length - 1) {
+            query += `${updateKeys[i]} = '${value}' `
+        } else {
+            query += `${updateKeys[i]} = '${value}', `
         }
     }
 
     const whereKeys = Object.keys(where);
     query += `WHERE `
     for (let j = 0; j < whereKeys.length; j++) {
-        if (j === whereKeys.length - 1) {
-            query += `${whereKeys[j]} = "${where[whereKeys[j]]}"`
+        let value;
+        if (typeof where[whereKeys[j]] === "string") {
+            value = where[whereKeys[j]].replace(/'/g, "''")
         } else {
-            query += `${whereKeys[j]} = "${where[whereKeys[j]]}" and `
+            value = where[whereKeys[j]]
+        }
+        if (j === whereKeys.length - 1) {
+            query += `${whereKeys[j]} = '${value}'`
+        } else {
+            query += `${whereKeys[j]} = '${value}' and `
         }
     }
     return query;
@@ -27,10 +39,16 @@ const selectAllQuery = (table, where) => {
 
     const whereKeys = Object.keys(where);
     for (let i = 0; i < whereKeys.length; i++) {
-        if (i === whereKeys.length - 1) {
-            query += `${whereKeys[i]} = "${where[whereKeys[i]]}"`
+        let value;
+        if (typeof where[whereKeys[i]] === "string") {
+            value = where[whereKeys[i]].replace(/'/g, "''")
         } else {
-            query += `${whereKeys[i]} = "${where[whereKeys[i]]}" and `
+            value = where[whereKeys[i]]
+        }
+        if (i === whereKeys.length - 1) {
+            query += `${whereKeys[i]} = '${value}'`
+        } else {
+            query += `${whereKeys[i]} = '${value}' and `
         }
     }
     return query;
@@ -50,10 +68,16 @@ const selectQuery = (table, targetKeys, where) => {
     query += `FROM ${table} WHERE `
     const whereKeys = Object.keys(where);
     for (let i = 0; i < whereKeys.length; i++) {
-        if (i === whereKeys.length - 1) {
-            query += `${whereKeys[i]} = "${where[whereKeys[i]]}"`
+        let value;
+        if (typeof where[whereKeys[i]] === "string") {
+            value = where[whereKeys[i]].replace(/'/g, "''")
         } else {
-            query += `${whereKeys[i]} = "${where[whereKeys[i]]}" and `
+            value = where[whereKeys[i]]
+        }
+        if (i === whereKeys.length - 1) {
+            query += `${whereKeys[i]} = '${value}'`
+        } else {
+            query += `${whereKeys[i]} = '${value}' and `
         }
     }
 
@@ -73,10 +97,16 @@ const insertQuery = (table, values) => {
     }
 
     for (let i = 0; i < keys.length; i++) {
-        if (i === keys.length - 1) {
-            query += `"${values[keys[i]]}")`
+        let value;
+        if (typeof values[keys[i]] === "string") {
+            value = values[keys[i]].replace(/'/g, "''")
         } else {
-            query += `"${values[keys[i]]}", `
+            value = values[keys[i]]
+        }
+        if (i === keys.length - 1) {
+            query += `'${value}')`
+        } else {
+            query += `'${value}', `
         }
     }
     return query;
