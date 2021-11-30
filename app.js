@@ -17,6 +17,8 @@ app.use('/uploads', express.static('uploads'));
 app.use('/users', require('./api/users/user'));
 app.use('/auth', require('./api/auth/auth'));
 app.use('/board', require('./api/board/board'));
+app.use('/news', require('./api/news/news'));
+app.use('/projects', require('./api/projects/project'));
 
 app.use(apiErrorHandler);
 

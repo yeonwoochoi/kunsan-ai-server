@@ -17,7 +17,7 @@ exports.test = (req, res, next) => {
 }
 
 exports.create = (req, res, next) => {
-    console.log('create board content called')
+    console.log('create news content called')
     const { title, content, id } = req.body;
     const files = req.files;
     const importance = (req.body.importance === 'true') ? 1 : 0;
@@ -32,37 +32,36 @@ exports.create = (req, res, next) => {
             else if (check_result.length > 0) {
                 const isUser = check_result[0]['user_role'] === 'user'
                 let payload = {
-                    'board_title': title,
-                    'board_content': JSON.stringify(content),
-                    'board_importance': importance,
+                    'news_title': title,
+                    'news_content': JSON.stringify(content),
+                    'news_importance': importance,
                     'user_id': id,
                 }
                 if (isUser && importance) {
                     console.log("User cannot register notice")
-                    payload.board_importance = 0;
+                    payload.news_importance = 0;
                 }
-                const registerBoardContentQuery = query.insertQuery('board', payload);
-                console.log(registerBoardContentQuery)
-                connection.query(registerBoardContentQuery, function (error, results, fields) {
+                const registerNewsContentQuery = query.insertQuery('news', payload);
+                connection.query(registerNewsContentQuery, function (error, results, fields) {
                     if (error) {
-                        console.log('Register failure during input board data into db');
+                        console.log('Register failure during input news data into db');
                         next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                         return;
                     }
                     console.log(results)
                     if (results.affectedRows > 0 || results.changedRows > 0) {
                         if (files.length > 0) {
-                            const getBoardIdQuery = query.selectQuery('board', ['idx'], payload)
-                            connection.query(getBoardIdQuery, function (error, board_id_results, fields) {
+                            const getNewsIdQuery = query.selectQuery('news', ['idx'], payload)
+                            connection.query(getNewsIdQuery, function (error, news_id_results, fields) {
                                 if (error) {
-                                    console.log('Register failure during get board index into db');
+                                    console.log('Register failure during get news index into db');
                                     next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                                     return;
                                 }
-                                const last_insert_board_id = board_id_results[0]['idx'];
-                                let registerAttachQuery = 'INSERT INTO board_files (board_files_link, board_files_name, board_id) VALUES ';
+                                const last_insert_news_id = news_id_results[0]['idx'];
+                                let registerAttachQuery = 'INSERT INTO news_files (news_files_link, news_files_name, news_id) VALUES ';
                                 for (let i = 0; i < files.length; i++) {
-                                    registerAttachQuery += `( "${files[i].filename}", "${files[i].originalname}", "${last_insert_board_id}" )`
+                                    registerAttachQuery += `( "${files[i].filename}", "${files[i].originalname}", "${last_insert_news_id}" )`
                                     if (i < files.length - 1) {
                                         registerAttachQuery += ', '
                                     }
@@ -70,18 +69,18 @@ exports.create = (req, res, next) => {
                                 console.log(registerAttachQuery)
                                 connection.query(registerAttachQuery, function (error, results, fields) {
                                     if (error) {
-                                        console.log('Register failure during input board file data into db');
+                                        console.log('Register failure during input news file data into db');
                                         next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                                         return;
                                     }
                                     if (results.affectedRows > 0 || results.changedRows > 0) {
                                         res.status(200).json({
                                             'status': 200,
-                                            'msg': 'Register board content success'
+                                            'msg': 'Register news content success'
                                         });
                                     }
                                     else {
-                                        console.log('Register board files failed')
+                                        console.log('Register news files failed')
                                         next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                                     }
                                 })
@@ -90,12 +89,12 @@ exports.create = (req, res, next) => {
                         else {
                             res.status(200).json({
                                 'status': 200,
-                                'msg': 'Register board content success'
+                                'msg': 'Register news content success'
                             });
                         }
                     }
                     else {
-                        console.log('Register board content failed')
+                        console.log('Register news content failed')
                         next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                     }
                 })
@@ -111,28 +110,28 @@ exports.create = (req, res, next) => {
 }
 
 exports.readAll = (req, res, next) => {
-    const selectAllQuery = 'SELECT * FROM board'
+    const selectAllQuery = 'SELECT * FROM news'
     connection.query(selectAllQuery, async function (error, results, fields) {
         if (error) {
-            console.log('Error occurred during reading all board data')
+            console.log('Error occurred during reading all news data')
             next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
             return;
         }
         if (results.length > 0) {
-            let totalResults = await mergeBoardContents(results);
+            let totalResults = await mergeNewsContents(results);
             if (!totalResults) {
-                console.log('An error occurred in the process of merging board contents')
+                console.log('An error occurred in the process of merging news contents')
                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
             }
             else {
                 res.status(200).json({
-                    msg: 'Read all board data success',
+                    msg: 'Read all news data success',
                     status: 200,
                     data: totalResults
                 })
             }
         } else {
-            console.log('No board data')
+            console.log('No news data')
             res.status(200).json({
                 msg: 'There is no data',
                 status: 200,
@@ -144,41 +143,40 @@ exports.readAll = (req, res, next) => {
 
 exports.read = (req, res, next) => {
     const {idx} = req.params;
-    const selectAllQuery = `SELECT * FROM board where idx = ${idx}`
+    const selectAllQuery = `SELECT * FROM news where idx = ${idx}`
     connection.query(selectAllQuery, async function (error, results, fields) {
         if (error) {
-            console.log('Error occurred during reading board data')
+            console.log('Error occurred during reading news data')
             next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
             return;
         }
         if (results.length > 0) {
             let result = {
                 idx: results[0].idx,
-                title: results[0].board_title,
-                content: results[0].board_content,
-                created_at: results[0].board_created_at.toISOString().split("T")[0],
-                view_count: results[0].board_view_count,
-                importance: results[0].board_importance,
+                title: results[0].news_title,
+                content: results[0].news_content,
+                created_at: results[0].news_created_at.toISOString().split("T")[0],
+                view_count: results[0].news_view_count,
+                importance: results[0].news_importance,
                 author: results[0].user_id,
                 comments: [],
                 attach: []
             };
             try {
-                let asyncResults = await Promise.all([getUserName(result.author), getBoardComments(result.idx), getBoardFiles(result.idx)]);
+                let asyncResults = await Promise.all([getUserName(result.author), getNewsFiles(result.idx)]);
                 result.author = asyncResults[0];
-                result.comments = asyncResults[1];
-                result.attach = asyncResults[2];
+                result.attach = asyncResults[1];
             } catch (e) {
                 next(ApiError.badRequest(e));
             }
             res.status(200).json({
-                msg: 'Read board data success',
+                msg: 'Read news data success',
                 status: 200,
                 data: result
             })
         }
         else {
-            console.log('No board data')
+            console.log('No news data')
             res.status(200).json({
                 msg: 'There is no data',
                 status: 200,
@@ -190,22 +188,22 @@ exports.read = (req, res, next) => {
 
 exports.addViewCount = (req, res, next) => {
     const {idx} = req.params;
-    const updateQuery = `UPDATE board SET board_view_count = board_view_count + 1 WHERE idx = ${idx}`
+    const updateQuery = `UPDATE news SET news_view_count = news_view_count + 1 WHERE idx = ${idx}`
     console.log(updateQuery)
 
     connection.query(updateQuery, function (error, results, fields) {
         if (error) {
-            console.log('Error occurred during updating board view count')
+            console.log('Error occurred during updating news view count')
             next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
             return;
         }
         if (results.affectedRows > 0 && results.changedRows > 0) {
             res.status(200).json({
-                msg: 'Updating board view count success',
+                msg: 'Updating news view count success',
                 status: 200,
             })
         } else {
-            next(ApiError.badRequest('There is no board content corresponding to the index in request body. Please check again.'));
+            next(ApiError.badRequest('There is no news content corresponding to the index in request body. Please check again.'));
         }
     })
 }
@@ -222,7 +220,7 @@ exports.getTotalPage = async (req, res, next) => {
             (conditionQuery) => {
                 if (conditionQuery.length === 0) {
                     res.status(200).json({
-                        msg: `No board results found`,
+                        msg: `No news results found`,
                         status: 200,
                         data: {
                             totalPage: 1,
@@ -230,10 +228,10 @@ exports.getTotalPage = async (req, res, next) => {
                         }
                     })
                 } else {
-                    let query = `SELECT COUNT(*) as count FROM board WHERE ${conditionQuery}`
+                    let query = `SELECT COUNT(*) as count FROM news WHERE ${conditionQuery}`
                     connection.query(query, function (error, results, fields) {
                         if (error) {
-                            console.log('Error occurred during getting board total count')
+                            console.log('Error occurred during getting news total count')
                             next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                             return;
                         }
@@ -260,10 +258,10 @@ exports.getTotalPage = async (req, res, next) => {
             })
     }
     else {
-        const query = 'SELECT COUNT(*) as count FROM board'
+        const query = 'SELECT COUNT(*) as count FROM news'
         connection.query(query, function (error, results, fields) {
             if (error) {
-                console.log('Error occurred during getting board total count')
+                console.log('Error occurred during getting news total count')
                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                 return;
             }
@@ -286,7 +284,7 @@ exports.getTotalPage = async (req, res, next) => {
     }
 }
 
-exports.getBoardContentInPage = async (req, res, next) => {
+exports.getNewsContentInPage = async (req, res, next) => {
     let {currentPage, itemPerPage, orderBy, searchBy, keyword} = req.body;
 
     // Set default value
@@ -310,10 +308,10 @@ exports.getBoardContentInPage = async (req, res, next) => {
             sortBy = 'idx';
             break;
         case 'created_at':
-            sortBy = 'board_created_at';
+            sortBy = 'news_created_at';
             break;
         case 'view_count':
-            sortBy = 'board_view_count';
+            sortBy = 'news_view_count';
             break;
         default:
             sortBy = 'idx';
@@ -323,13 +321,13 @@ exports.getBoardContentInPage = async (req, res, next) => {
     let searchColumns = 'idx'
     switch (searchBy) {
         case 'total':
-            searchColumns = 'board_title, board_content, user_id';
+            searchColumns = 'news_title, news_content, user_id';
             break;
         case 'title':
-            searchColumns = 'board_title';
+            searchColumns = 'news_title';
             break;
         case 'content':
-            searchColumns = 'board_content';
+            searchColumns = 'news_content';
             break;
         default:
             searchColumns = 'idx';
@@ -337,22 +335,22 @@ exports.getBoardContentInPage = async (req, res, next) => {
     }
 
     if (!keyword) {
-        const query = `SELECT * FROM board ORDER BY FIELD(board_importance, 1) DESC, ${sortBy} DESC LIMIT ${(currentPage-1) * itemPerPage}, ${itemPerPage}`;
+        const query = `SELECT * FROM news ORDER BY FIELD(news_importance, 1) DESC, ${sortBy} DESC LIMIT ${(currentPage-1) * itemPerPage}, ${itemPerPage}`;
         connection.query(query, async function (error, results, fields) {
             if (error) {
-                console.log('Error occurred during getting board content in page ' + currentPage)
+                console.log('Error occurred during getting news content in page ' + currentPage)
                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                 return;
             }
             if (results.length > 0) {
-                let totalResults = await mergeBoardContents(results, currentPage, itemPerPage);
+                let totalResults = await mergeNewsContents(results, currentPage, itemPerPage);
                 if (!totalResults) {
-                    console.log('An error occurred in the process of merging board contents')
+                    console.log('An error occurred in the process of merging news contents')
                     next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                 }
                 else {
                     res.status(200).json({
-                        msg: `Read board content in page ${currentPage} success`,
+                        msg: `Read news content in page ${currentPage} success`,
                         status: 200,
                         data: totalResults
                     })
@@ -368,36 +366,36 @@ exports.getBoardContentInPage = async (req, res, next) => {
             (conditionQuery) => {
                 if (conditionQuery.length === 0) {
                     res.status(200).json({
-                        msg: `No board results found`,
+                        msg: `No news results found`,
                         status: 200,
                         data: []
                     })
                 }
                 else {
-                    let query = `SELECT * FROM board WHERE ${conditionQuery} ORDER BY FIELD(board_importance, 1) DESC, ${sortBy} DESC LIMIT ${(currentPage-1) * itemPerPage}, ${currentPage * itemPerPage}`
+                    let query = `SELECT * FROM news WHERE ${conditionQuery} ORDER BY FIELD(news_importance, 1) DESC, ${sortBy} DESC LIMIT ${(currentPage-1) * itemPerPage}, ${currentPage * itemPerPage}`
                     connection.query(query, async function (error, results, fields) {
                         if (error) {
-                            console.log('Error occurred during searching board contents')
+                            console.log('Error occurred during searching news contents')
                             next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                             return;
                         }
                         if (results.length > 0) {
-                            let totalResults = await mergeBoardContents(results, currentPage, itemPerPage);
+                            let totalResults = await mergeNewsContents(results, currentPage, itemPerPage);
                             if (!totalResults) {
-                                console.log('An error occurred in the process of merging board contents')
+                                console.log('An error occurred in the process of merging news contents')
                                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                             }
                             else {
                                 res.status(200).json({
-                                    msg: `Read board content in page ${currentPage} success`,
+                                    msg: `Read news content in page ${currentPage} success`,
                                     status: 200,
                                     data: totalResults
                                 })
                             }
                         } else {
-                            console.log(`No board results found`)
+                            console.log(`No news results found`)
                             res.status(200).json({
-                                msg: `Read board content in page ${currentPage} success`,
+                                msg: `Read news content in page ${currentPage} success`,
                                 status: 200,
                                 data: []
                             })
@@ -406,7 +404,7 @@ exports.getBoardContentInPage = async (req, res, next) => {
                 }
             },
             (err) => {
-                console.log('Error occurred during searching user name before searching board contents')
+                console.log('Error occurred during searching user name before searching news contents')
                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
             }
         );
@@ -414,8 +412,8 @@ exports.getBoardContentInPage = async (req, res, next) => {
 }
 
 exports.update = (req, res, next) => {
-    const {user_id, board_id} = req.body;
-    checkAuthor(user_id, board_id).then(
+    const {user_id, news_id} = req.body;
+    checkAuthor(user_id, news_id).then(
         (isSame) => {
             if (isSame) {
                 res.status(200).json({
@@ -437,79 +435,25 @@ exports.delete = (req, res, next) => {
 
 }
 
-exports.addComment = (req, res, next) => {
-    const {id, comment, idx} = req.body;
-    if (id && comment && idx) {
-        getUserName(id).then(
-            (name) => {
-                const checkBoardIdxQuery = query.selectAllQuery('board', {'idx': idx})
-                connection.query(checkBoardIdxQuery, async function (err, checkResults, fields) {
-                    if (err){
-                        console.log('Error occurred during checking board idx before register comment')
-                        next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
-                        return;
-                    }
-                    if (checkResults.length > 0) {
-                        const addCommentQuery = query.insertQuery('board_comment', {
-                            'board_id': idx,
-                            'board_comment_content': comment,
-                            'user_id': id
-                        })
-                        connection.query(addCommentQuery, async function (err, results, fields) {
-                            if (err){
-                                console.log('Error occurred during checking board idx before register comment')
-                                next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
-                                return;
-                            }
-                            if (results.affectedRows > 0 || results.changedRows > 0) {
-                                console.log('Register board comment success')
-                                res.status(200).json({
-                                    status: 200,
-                                    msg: 'Register board comment success'
-                                })
-                            }
-                            else {
-                                console.log('Register board comment failed')
-                                next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
-                            }
-                        })
-                    }
-                    else {
-                        next(ApiError.badRequest('Board idx is not registered. Please try again'));
-                    }
-                })
-            },
-            (err) => {
-                console.log(err)
-                next(ApiError.badRequest('This id is not registered.'))
-            }
-        )
-    }
-    else {
-        next(ApiError.badRequest('Please input all data'))
-    }
-}
-
-async function mergeBoardContents(results, page = 1, itemsPerPage = 10) {
+async function mergeNewsContents(results, page = 1, itemsPerPage = 10) {
     let totalResults = [];
     for (let i = 0; i < results.length; i++) {
         let row = {
             no: i+1+((page-1) * itemsPerPage),
             idx: results[i].idx,
-            title: results[i].board_title,
-            content: results[i].board_content,
-            created_at: results[i].board_created_at.toISOString().split("T")[0],
-            view_count: results[i].board_view_count,
-            importance: results[i].board_importance,
+            title: results[i].news_title,
+            content: results[i].news_content,
+            created_at: results[i].news_created_at.toISOString().split("T")[0],
+            view_count: results[i].news_view_count,
+            importance: results[i].news_importance,
             author: results[i].user_id,
             comments: [],
             attach: []
         };
         try {
-            let asyncResults = await Promise.all([getUserName(row.author), getBoardComments(row.idx), getBoardFiles(row.idx)]);
+            let asyncResults = await Promise.all([getUserName(row.author), getNewsFiles(row.idx)]);
             row.author = asyncResults[0];
-            row.comments = asyncResults[1];
-            row.attach = asyncResults[2];
+            row.attach = asyncResults[1];
             totalResults.push(row)
         } catch (e) {
             return null;
@@ -518,9 +462,9 @@ async function mergeBoardContents(results, page = 1, itemsPerPage = 10) {
     return totalResults;
 }
 
-function checkAuthor(user_id, board_id) {
+function checkAuthor(user_id, news_id) {
     return new Promise((resolve, reject) => {
-        const checkQuery = `select (select user_id from board where idx = "${board_id}") = ("${user_id}") as is_same`
+        const checkQuery = `select (select user_id from news where idx = "${news_id}") = ("${user_id}") as is_same`
         connection.query(checkQuery, async function (error, results, fields) {
             if (error) {
                 reject('There is a problem with the server. Please try again in a few minutes.')
@@ -550,32 +494,10 @@ function getUserName(user_id) {
     }))
 }
 
-function getBoardComments(board_id, isLatestOrder = true) {
-    return new Promise(((resolve, reject) => {
-        const selectQuery = `select board_comment.board_comment_content, board_comment.board_comment_created_at, user.user_name from board_comment, user where board_id = ${board_id} and user.user_id = board_comment.user_id ORDER BY board_comment.board_comment_created_at ${isLatestOrder ? 'DESC' : 'ASC'}`;
-        connection.query(selectQuery, async function (error, results, fields) {
-            if (error) {
-                reject('There is a problem with the server. Please try again in a few minutes.')
-            }
-            else if (results.length > 0) {
-                resolve(results.map(x => {
-                    let dateArr = x['board_comment_created_at'].toISOString().split("T");
-                    return {
-                        content: x['board_comment_content'],
-                        created_at: `${dateArr[0]} ${dateArr[1].split(".")[0]}`,
-                        author: x['user_name']
-                    };
-                }))
-            } else {
-                resolve([])
-            }
-        });
-    }))
-}
 
-function getBoardFiles(board_id) {
+function getNewsFiles(news_id) {
     return new Promise(((resolve, reject) => {
-        const selectQuery = query.selectQuery('board_files', ['board_files_name', 'board_files_link'], {board_id: board_id});
+        const selectQuery = query.selectQuery('news_files', ['news_files_name', 'news_files_link'], {news_id: news_id});
         connection.query(selectQuery, async function (error, results, fields) {
             if (error) {
                 reject('There is a problem with the server. Please try again in a few minutes.')
@@ -583,8 +505,8 @@ function getBoardFiles(board_id) {
             else if (results.length > 0) {
                 resolve(results.map(x => {
                     return {
-                        link: `${address.ip}:${address.port}/${address.path}/${x.board_files_link}`,
-                        name: x.board_files_name
+                        link: `${address.ip}:${address.port}/${address.path}/${x.news_files_link}`,
+                        name: x.news_files_name
                     }
                 }))
             } else {
@@ -600,7 +522,7 @@ async function setSearchConditions(searchBy, keyword) {
             const selectUserQuery = `SELECT user_id, user_name FROM user WHERE user_name REGEXP "${keyword}"`;
             connection.query(selectUserQuery, async function (err, userInfos, fields) {
                 if (err) {
-                    console.log('Error occurred during searching user name before searching board contents')
+                    console.log('Error occurred during searching user name before searching news contents')
                     reject();
                 }
                 else {
@@ -614,14 +536,14 @@ async function setSearchConditions(searchBy, keyword) {
                             }
                         }
                         if (searchBy === 'total') {
-                            conditionQuery += ` or board_title REGEXP "${keyword}" or board_content REGEXP "${keyword}" or user_id REGEXP "${keyword}"`
+                            conditionQuery += ` or news_title REGEXP "${keyword}" or news_content REGEXP "${keyword}" or user_id REGEXP "${keyword}"`
                         }
                     }
                     else if (searchBy === 'total') {
-                        conditionQuery += `board_title REGEXP "${keyword}" or board_content REGEXP "${keyword}" or user_id REGEXP "${keyword}"`
+                        conditionQuery += `news_title REGEXP "${keyword}" or news_content REGEXP "${keyword}" or user_id REGEXP "${keyword}"`
                     }
                     else {
-                        console.log(`No board results found`)
+                        console.log(`No news results found`)
                         resolve('')
                     }
                     resolve(conditionQuery)
@@ -629,10 +551,10 @@ async function setSearchConditions(searchBy, keyword) {
             })
         }
         else if (searchBy === 'title'){
-            resolve(`board_title REGEXP "${keyword}"`)
+            resolve(`news_title REGEXP "${keyword}"`)
         }
         else if (searchBy === 'content') {
-            resolve(`board_content REGEXP "${keyword}"`)
+            resolve(`news_content REGEXP "${keyword}"`)
         }
     }))
 }

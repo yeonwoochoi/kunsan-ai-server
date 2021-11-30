@@ -9,6 +9,7 @@ const jwt = require('jsonwebtoken');
 const {transporter} = require("../../config/email");
 const query = require("../../config/query");
 const ApiError = require("../error/api-error");
+const utils = require("../../util/utils");
 
 
 function createAccessToken (user_id, user_role) {
@@ -295,7 +296,7 @@ exports.check = (req, res, next) => {
         checkToken.then(
             token => {
                 console.log('Access token is valid')
-                let payload = parseJwt(token)
+                let payload = utils.parseJwt(token)
                 if (payload.id === user_id) {
                     res.status(200).json({
                         'status': 200,
@@ -333,10 +334,4 @@ exports.check = (req, res, next) => {
         )
     }
 };
-
-function parseJwt(token) {
-    let base64Payload = token.split('.')[1];
-    let payload = Buffer.from(base64Payload, 'base64');
-    return JSON.parse(payload.toString());
-}
 
