@@ -42,6 +42,7 @@ exports.create = (req, res, next) => {
                     payload.news_importance = 0;
                 }
                 const registerNewsContentQuery = query.insertQuery('news', payload);
+                console.log(`register query : ${registerNewsContentQuery}`)
                 connection.query(registerNewsContentQuery, function (error, results, fields) {
                     if (error) {
                         console.log('Register failure during input news data into db');

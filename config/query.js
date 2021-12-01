@@ -103,6 +103,16 @@ const insertQuery = (table, values) => {
         } else {
             value = values[keys[i]]
         }
+
+        if (typeof value === "string") {
+            let temp;
+            if (value.substring(0, 1) === '"' && value.substring(value.length-1, value.length) === '"') {
+                temp = value.slice(1, value.length-1)
+                value = temp;
+            }
+        }
+        console.log(value)
+
         if (i === keys.length - 1) {
             query += `'${value}')`
         } else {
