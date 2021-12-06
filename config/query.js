@@ -3,12 +3,8 @@ const updateQuery = (table, newValues, where) => {
 
     const updateKeys = Object.keys(newValues);
     for (let i = 0; i < updateKeys.length; i++) {
-        let value;
-        if (typeof newValues[updateKeys[i]] === "string") {
-            value = newValues[updateKeys[i]].replace(/'/g, "''")
-        } else {
-            value = newValues[updateKeys[i]]
-        }
+        let value = processCondition(newValues, updateKeys[i]);
+
         if (i === updateKeys.length - 1) {
             query += `${updateKeys[i]} = '${value}' `
         } else {
@@ -18,17 +14,13 @@ const updateQuery = (table, newValues, where) => {
 
     const whereKeys = Object.keys(where);
     query += `WHERE `
-    for (let j = 0; j < whereKeys.length; j++) {
-        let value;
-        if (typeof where[whereKeys[j]] === "string") {
-            value = where[whereKeys[j]].replace(/'/g, "''")
+    for (let i = 0; i < whereKeys.length; i++) {
+        let value = processCondition(where, whereKeys[i]);
+
+        if (i === whereKeys.length - 1) {
+            query += `${whereKeys[i]} = '${value}'`
         } else {
-            value = where[whereKeys[j]]
-        }
-        if (j === whereKeys.length - 1) {
-            query += `${whereKeys[j]} = '${value}'`
-        } else {
-            query += `${whereKeys[j]} = '${value}' and `
+            query += `${whereKeys[i]} = '${value}' and `
         }
     }
     return query;
@@ -39,12 +31,8 @@ const selectAllQuery = (table, where) => {
 
     const whereKeys = Object.keys(where);
     for (let i = 0; i < whereKeys.length; i++) {
-        let value;
-        if (typeof where[whereKeys[i]] === "string") {
-            value = where[whereKeys[i]].replace(/'/g, "''")
-        } else {
-            value = where[whereKeys[i]]
-        }
+        let value = processCondition(where, whereKeys[i]);
+
         if (i === whereKeys.length - 1) {
             query += `${whereKeys[i]} = '${value}'`
         } else {
@@ -68,12 +56,8 @@ const selectQuery = (table, targetKeys, where) => {
     query += `FROM ${table} WHERE `
     const whereKeys = Object.keys(where);
     for (let i = 0; i < whereKeys.length; i++) {
-        let value;
-        if (typeof where[whereKeys[i]] === "string") {
-            value = where[whereKeys[i]].replace(/'/g, "''")
-        } else {
-            value = where[whereKeys[i]]
-        }
+        let value = processCondition(where, whereKeys[i]);
+
         if (i === whereKeys.length - 1) {
             query += `${whereKeys[i]} = '${value}'`
         } else {
@@ -97,21 +81,7 @@ const insertQuery = (table, values) => {
     }
 
     for (let i = 0; i < keys.length; i++) {
-        let value;
-        if (typeof values[keys[i]] === "string") {
-            value = values[keys[i]].replace(/'/g, "''")
-        } else {
-            value = values[keys[i]]
-        }
-
-        if (typeof value === "string") {
-            let temp;
-            if (value.substring(0, 1) === '"' && value.substring(value.length-1, value.length) === '"') {
-                temp = value.slice(1, value.length-1)
-                value = temp;
-            }
-        }
-        console.log(value)
+        let value = processCondition(values, keys[i]);
 
         if (i === keys.length - 1) {
             query += `'${value}')`
@@ -120,6 +90,24 @@ const insertQuery = (table, values) => {
         }
     }
     return query;
+}
+
+function processCondition(values, key) {
+    let value;
+    if (typeof values[key] === "string") {
+        value = values[key].replace(/'/g, "''")
+    } else {
+        value = values[key]
+    }
+
+    if (typeof value === "string") {
+        let temp;
+        if (value.substring(0, 1) === '"' && value.substring(value.length-1, value.length) === '"') {
+            temp = value.slice(1, value.length-1)
+            value = temp;
+        }
+    }
+    return value;
 }
 
 module.exports = {
