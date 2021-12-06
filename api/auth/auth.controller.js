@@ -282,8 +282,147 @@ exports.check = (req, res, next) => {
     // 인증 확인
     const user_id = req.body.id;
     let accessToken = req.headers['x-access-token'];
-    let refreshToken = null;
     if (accessToken) {
+        this.checkLogin(user_id, accessToken).then(
+            payload => {
+                console.log('Access token is valid')
+                res.status(200).json({
+                    'status': 200,
+                    'msg': 'Access token is valid',
+                    'data': {
+                        'id': user_id,
+                        'role': payload.role,
+                        'accessToken': accessToken,
+                    }
+                })
+            },
+            isUserNotMatchErr => {
+                if (isUserNotMatchErr) {
+                    console.log('user_id and id from accessToken is not matched')
+                    next(ApiError.badRequest('Invalid access. Please logout and try again.'));
+                } else {
+                    getRefreshToken(user_id).then(
+                        (result) => {
+                            console.log('Invalid access token but valid refresh token')
+                            res.status(200).json(result);
+                        },
+                        (error) => {
+                            console.log('Both access token and refresh token are invalid')
+                            next(ApiError.badRequest('Access token is invalid'));
+                        }
+                    )
+                }
+            }
+        )
+    } else {
+        getRefreshToken(user_id).then(
+            (result) => {
+                console.log('Reissuing access token')
+                res.status(200).json(result);
+            },
+            (error) => {
+                console.log('Reissuing access token failure')
+                next(ApiError.badRequest(error.msg));
+            }
+        )
+    }
+};
+
+exports.isAdmin = (req, res, next) => {
+    const {id} = req.body;
+    let accessToken = req.headers['x-access-token'];
+    if (accessToken) {
+        this.checkAdmin(id, accessToken).then(
+            isAdmin => {
+                res.status(200).json({
+                    'status': 200,
+                    'msg': 'check admin success',
+                    'data': {
+                        'isAdmin': isAdmin
+                    }
+                });
+            },
+            err => {
+                next(ApiError.badRequest(err))
+            }
+        )
+    }
+    else {
+        res.status(200).json({
+            'status': 200,
+            'msg': 'please log in',
+            'data': {
+                'isAdmin': false
+            }
+        });
+    }
+}
+
+exports.isLogin = (req, res, next) => {
+    const user_id = req.body.id;
+    let accessToken = req.headers['x-access-token'];
+    if (user_id && accessToken) {
+        this.checkLogin(user_id, accessToken).then(
+            payload => {
+                console.log('Access token is valid')
+                res.status(200).json({
+                    'status': 200,
+                    'msg': 'Access token is valid',
+                    'data': {
+                        'isLogin': true
+                    }
+                })
+            },
+            isUserNotMatchErr => {
+                if (isUserNotMatchErr) {
+                    console.log('user_id and id from accessToken is not matched')
+                    next(ApiError.badRequest('Invalid access. Please logout and try again.'));
+                } else {
+                    console.log('Access token is invalid')
+                    res.status(200).json({
+                        'status': 200,
+                        'msg': 'Access token is inValid',
+                        'data': {
+                            'isLogin': false
+                        }
+                    })
+                }
+            }
+        )
+    }
+    else {
+        res.status(200).json({
+            'status': 200,
+            'msg': 'User id or access token is null',
+            'data': {
+                'isLogin': false
+            }
+        })
+    }
+}
+
+exports.checkLogin = (user_id, accessToken) => {
+    let isUserNotMatched = false;
+    return new Promise((resolve, reject) => {
+        jwt.verify(accessToken, jwt_secret, function (err, decoded) {
+            if (err) {
+                reject(isUserNotMatched)
+            }
+            else {
+                let payload = utils.parseJwt(accessToken)
+                if (payload.id === user_id) {
+                    resolve(payload)
+                } else {
+                    isUserNotMatched = true;
+                    reject(isUserNotMatched)
+                }
+            }
+        });
+    });
+}
+
+exports.checkAdmin = (id, accessToken) => {
+    return new Promise((resolve, reject) => {
         const checkToken = new Promise((resolve, reject) => {
             jwt.verify(accessToken, jwt_secret, function (err, decoded) {
                 if (err) {
@@ -295,43 +434,31 @@ exports.check = (req, res, next) => {
         });
         checkToken.then(
             token => {
-                console.log('Access token is valid')
                 let payload = utils.parseJwt(token)
-                if (payload.id === user_id) {
-                    res.status(200).json({
-                        'status': 200,
-                        'msg': 'Access token is valid',
-                        'data': {
-                            'id': user_id,
-                            'role': payload.role,
-                            'accessToken': token,
+                if (payload.id === id) {
+                    const selectQuery = `select (select user_role from user where user_id = "${id}") = "admin" as "isAdmin"`
+                    connection.query(selectQuery, async function (error, results) {
+                        if (error) {
+                            console.log(error);
+                            reject('check is admin failure');
+                            return;
+                        }
+                        if (results.length > 0) {
+                            console.log(`check is admin success : ${results[0].isAdmin}`)
+                            resolve(results[0].isAdmin === 1)
+                        }
+                        else {
+                            console.log('This id is not registered');
+                            reject('This id is not registered')
                         }
                     })
                 } else {
-                    next(ApiError.badRequest('Invalid access. Please logout and try again.'));
+                    reject('Invalid access. Please logout and try again.')
                 }
             },
             err => {
-                console.log(err)
-                getRefreshToken(user_id).then(
-                    (result) => {
-                        res.status(200).json(result);
-                    },
-                    (error) => {
-                        next(ApiError.badRequest(err));
-                    }
-                )
+                reject('Invalid access. Please logout and try again.');
             }
         )
-    } else {
-        getRefreshToken(user_id).then(
-            (result) => {
-                res.status(200).json(result);
-            },
-            (error) => {
-                next(ApiError.badRequest(error.msg));
-            }
-        )
-    }
-};
-
+    })
+}

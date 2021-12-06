@@ -179,65 +179,6 @@ exports.logout = (req, res, next) => {
     });
 };
 
-exports.isAdmin = (req, res, next) => {
-    const {id} = req.body;
-    let accessToken = req.headers['x-access-token'];
-    if (accessToken) {
-        const checkToken = new Promise((resolve, reject) => {
-            jwt.verify(accessToken, jwt_secret, function (err, decoded) {
-                if (err) {
-                    reject('Access token is invalid')
-                } else{
-                    resolve(accessToken);
-                }
-            });
-        });
-        checkToken.then(
-            token => {
-                let payload = utils.parseJwt(token)
-                console.log(payload)
-                if (payload.id === id) {
-                    const selectQuery = `select (select user_role from user where user_id = "${id}") = "admin" as "isAdmin"`
-                    connection.query(selectQuery, async function (error, results, fields) {
-                        if (error) {
-                            console.log(error);
-                            next(ApiError.badRequest('check is admin failure'));
-                            return;
-                        }
-                        if (results.length > 0) {
-                            console.log(`check is admin success : ${results[0].isAdmin}`)
-                            res.status(200).json({
-                                'status': 200,
-                                'msg': 'check admin success',
-                                'data': {
-                                    'isAdmin': results[0].isAdmin === 1
-                                }
-                            });
-                        }
-                        else {
-                            console.log('This id is not registered');
-                            next(ApiError.badRequest('This id is not registered'));
-                        }
-                    })
-                } else {
-                    next(ApiError.badRequest('Invalid access. Please logout and try again.'));
-                }
-            },
-            err => {
-                next(ApiError.badRequest('Invalid access. Please logout and try again.'));
-            }
-        )
-    }
-    else {
-        res.status(200).json({
-            'status': 200,
-            'msg': 'please log in',
-            'data': {
-                'isAdmin': false
-            }
-        });
-    }
-}
 
 const randomPwdGenerator = () => {
     return Math.random().toString(36).substr(2,11);
