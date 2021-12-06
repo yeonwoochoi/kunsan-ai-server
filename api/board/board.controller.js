@@ -63,31 +63,17 @@ exports.create = (req, res, next) => {
                                     return;
                                 }
                                 const last_insert_board_id = board_id_results[0]['idx'];
-                                let registerAttachQuery = 'INSERT INTO board_files (board_files_link, board_files_name, board_id) VALUES ';
-                                for (let i = 0; i < files.length; i++) {
-                                    registerAttachQuery += `( "${files[i].filename}", "${files[i].originalname}", "${last_insert_board_id}" )`
-                                    if (i < files.length - 1) {
-                                        registerAttachQuery += ', '
-                                    }
-                                }
-                                console.log(registerAttachQuery)
-                                connection.query(registerAttachQuery, function (error, results, fields) {
-                                    if (error) {
-                                        console.log('Register failure during input board file data into db');
-                                        next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
-                                        return;
-                                    }
-                                    if (results.affectedRows > 0 || results.changedRows > 0) {
+                                insertBoardFiles(last_insert_board_id, files).then(
+                                    msg => {
                                         res.status(200).json({
                                             'status': 200,
-                                            'msg': 'Register board content success'
+                                            'msg': msg
                                         });
+                                    },
+                                    err => {
+                                        next(ApiError.badRequest(err));
                                     }
-                                    else {
-                                        console.log('Register board files failed')
-                                        next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
-                                    }
-                                })
+                                )
                             })
                         }
                         else {
@@ -420,6 +406,8 @@ exports.update = (req, res, next) => {
     const { title, content, id, idx } = req.body;
     const files = req.files;
     const importance = (req.body.importance === 'true') ? 1 : 0;
+    console.dir(req.body)
+    console.dir(req.files)
 
     if (title && content && id) {
         const checkUserQuery = `select (select user_role from user where user_id = "${id}") = 'admin' or (select user_id from board where idx = "${idx}") = "${id}" as correct;`
@@ -445,10 +433,25 @@ exports.update = (req, res, next) => {
                         // update할 때만 해당됨.. insert 할 땐 affectedRows 가 "생성된 rows 수"를 의미
                         // affectedRows : where절로 검색된 rows 수
                         // changedRows : 실제로 update된 rows 수
-                        if (results.changedRows > 0 && results.affectedRows > 0) {
-                            // TODO : delete all board_files (query 써서)
-                            // server uploads에 저장된 file들을 제거
-                            // deleteFiles(idx, 'board_files').then()
+                        if (results.affectedRows > 0) {
+                            deleteFiles(idx, 'board_files').then(
+                                () => {
+                                    updateBoardFiles(idx, files, 'board_files').then(
+                                        msg => {
+                                            res.status(200).json({
+                                                status: 200,
+                                                msg: msg
+                                            })
+                                        },
+                                        err => {
+                                            next(ApiError.badRequest(err))
+                                        }
+                                    )
+                                },
+                                err => {
+                                    next(ApiError.badRequest(err))
+                                }
+                            )
                         }
                         else {
                             console.log('There is nothing to update')
@@ -797,5 +800,51 @@ async function setSearchConditions(searchBy, keyword) {
         else if (searchBy === 'content') {
             resolve(`board_content REGEXP "${keyword}"`)
         }
+    }))
+}
+
+function updateBoardFiles(idx, files, table) {
+    return new Promise(((resolve, reject) => {
+        const deleteQuery = `DELETE FROM ${table} WHERE board_id = "${idx}"`;
+        connection.query(deleteQuery, async function (err, results, fields) {
+            if (err) {
+                reject(err)
+            }
+            else {
+                insertBoardFiles(idx, files).then(
+                    msg => {
+                        resolve(msg)
+                    },
+                    err => {
+                        reject(err)
+                    }
+                )
+            }
+        })
+    }))
+}
+
+function insertBoardFiles(board_id, files){
+    return new Promise(((resolve, reject) => {
+        let registerAttachQuery = 'INSERT INTO board_files (board_files_link, board_files_name, board_id) VALUES ';
+        for (let i = 0; i < files.length; i++) {
+            registerAttachQuery += `( "${files[i].filename}", "${files[i].originalname}", "${board_id}" )`
+            if (i < files.length - 1) {
+                registerAttachQuery += ', '
+            }
+        }
+        connection.query(registerAttachQuery, function (error, results, fields) {
+            if (error) {
+                console.log('Register failure during input board file data into db');
+                reject('There is a problem with the server. Please try again in a few minutes.');
+            }
+            else if (results.affectedRows > 0 || results.changedRows > 0) {
+                resolve('Register board content success')
+            }
+            else {
+                console.log('Register board files failed')
+                reject('There is a problem with the server. Please try again in a few minutes.')
+            }
+        })
     }))
 }

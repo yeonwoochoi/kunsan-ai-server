@@ -11,6 +11,6 @@ router.post('/getTotalPage', controller.getTotalPage)
 router.post('/addComment', controller.addComment)
 router.post('/checkAuthor', controller.checkAuthor)
 router.post('/delete', controller.delete)
-router.post('/update', controller.update)
+router.post('/update', upload.array("files"), controller.update)
 
 module.exports = router;
