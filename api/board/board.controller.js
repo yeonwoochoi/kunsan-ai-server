@@ -1,9 +1,6 @@
 const mysql = require('mysql');
 const config = require('../../config/config');
 const connection = mysql.createConnection(config.SQL);
-const jwt = require("jsonwebtoken");
-const secret = config.KEY.secret;
-const jwt_secret = config.KEY.jwt_secret;
 const query = require('../../config/query')
 const ApiError = require("../error/api-error");
 const {checkAdmin, checkLogin} = require("../auth/auth.controller");
@@ -13,13 +10,6 @@ const { constants, promises: { access } } = require('fs');
 const appDir = dirname(require.main.filename);
 const address = require('../../config/address').IP;
 
-exports.test = (req, res, next) => {
-    res.status(200).json({
-        body: req.body,
-        files: req.files
-    })
-}
-
 exports.create = (req, res, next) => {
     console.log('create board content called')
     const { title, content, id } = req.body;
@@ -28,7 +18,7 @@ exports.create = (req, res, next) => {
 
     if (title && content && id) {
         const checkUserQuery = query.selectQuery('user', ['user_id'], {'user_id': id});
-        connection.query(checkUserQuery, function (error, check_result, fields) {
+        connection.query(checkUserQuery, function (error, check_result) {
             if (error) {
                 console.log('Register content failure during check user id into db');
                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
@@ -46,7 +36,7 @@ exports.create = (req, res, next) => {
                     payload.board_importance = 0;
                 }
                 const registerBoardContentQuery = query.insertQuery('board', payload);
-                connection.query(registerBoardContentQuery, function (error, results, fields) {
+                connection.query(registerBoardContentQuery, function (error, results) {
                     if (error) {
                         console.log('Register failure during input board data into db');
                         next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
@@ -56,7 +46,7 @@ exports.create = (req, res, next) => {
                     if (results.affectedRows > 0 || results.changedRows > 0) {
                         if (files.length > 0) {
                             const getBoardIdQuery = query.selectQuery('board', ['idx'], payload)
-                            connection.query(getBoardIdQuery, function (error, board_id_results, fields) {
+                            connection.query(getBoardIdQuery, function (error, board_id_results) {
                                 if (error) {
                                     console.log('Register failure during get board index into db');
                                     next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
@@ -101,7 +91,7 @@ exports.create = (req, res, next) => {
 
 exports.readAll = (req, res, next) => {
     const selectAllQuery = 'SELECT * FROM board'
-    connection.query(selectAllQuery, async function (error, results, fields) {
+    connection.query(selectAllQuery, async function (error, results) {
         if (error) {
             console.log('Error occurred during reading all board data')
             next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
@@ -134,7 +124,7 @@ exports.readAll = (req, res, next) => {
 exports.readByIndex = (req, res, next) => {
     const {idx} = req.params;
     const selectAllQuery = `SELECT * FROM board where idx = ${idx}`
-    connection.query(selectAllQuery, async function (error, results, fields) {
+    connection.query(selectAllQuery, async function (error, results) {
         if (error) {
             console.log('Error occurred during reading board data')
             next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
@@ -145,8 +135,8 @@ exports.readByIndex = (req, res, next) => {
                 idx: results[0].idx,
                 title: results[0].board_title,
                 content: results[0].board_content,
-                created_at: results[0].board_created_at.toISOString().split("T")[0],
-                view_count: results[0].board_view_count,
+                created_at: results[0]['board_created_at'].toISOString().split("T")[0],
+                view_count: results[0]['board_view_count'],
                 importance: results[0].board_importance,
                 author: results[0].user_id,
                 comments: [],
@@ -181,7 +171,7 @@ exports.addViewCount = (req, res, next) => {
     const {idx} = req.params;
     const updateQuery = `UPDATE board SET board_view_count = board_view_count + 1 WHERE idx = ${idx}`
 
-    connection.query(updateQuery, function (error, results, fields) {
+    connection.query(updateQuery, function (error, results) {
         if (error) {
             console.log('Error occurred during updating board view count')
             next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
@@ -219,7 +209,7 @@ exports.getTotalPage = async (req, res, next) => {
                     })
                 } else {
                     let query = `SELECT COUNT(*) as count FROM board WHERE ${conditionQuery}`
-                    connection.query(query, function (error, results, fields) {
+                    connection.query(query, function (error, results) {
                         if (error) {
                             console.log('Error occurred during getting board total count')
                             next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
@@ -243,13 +233,13 @@ exports.getTotalPage = async (req, res, next) => {
                     })
                 }
             },
-            (err) => {
+            () => {
                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
             })
     }
     else {
         const query = 'SELECT COUNT(*) as count FROM board'
-        connection.query(query, function (error, results, fields) {
+        connection.query(query, function (error, results) {
             if (error) {
                 console.log('Error occurred during getting board total count')
                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
@@ -308,7 +298,7 @@ exports.getBoardContentInPage = async (req, res, next) => {
             break
     }
 
-    let searchColumns = 'idx'
+    let searchColumns;
     switch (searchBy) {
         case 'total':
             searchColumns = 'board_title, board_content, user_id';
@@ -326,7 +316,7 @@ exports.getBoardContentInPage = async (req, res, next) => {
 
     if (!keyword) {
         const query = `SELECT * FROM board ORDER BY FIELD(board_importance, 1) DESC, ${sortBy} DESC LIMIT ${(currentPage-1) * itemPerPage}, ${itemPerPage}`;
-        connection.query(query, async function (error, results, fields) {
+        connection.query(query, async function (error, results) {
             if (error) {
                 console.log('Error occurred during getting board content in page ' + currentPage)
                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
@@ -363,7 +353,7 @@ exports.getBoardContentInPage = async (req, res, next) => {
                 }
                 else {
                     let query = `SELECT * FROM board WHERE ${conditionQuery} ORDER BY FIELD(board_importance, 1) DESC, ${sortBy} DESC LIMIT ${(currentPage-1) * itemPerPage}, ${currentPage * itemPerPage}`
-                    connection.query(query, async function (error, results, fields) {
+                    connection.query(query, async function (error, results) {
                         if (error) {
                             console.log('Error occurred during searching board contents')
                             next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
@@ -393,7 +383,7 @@ exports.getBoardContentInPage = async (req, res, next) => {
                     })
                 }
             },
-            (err) => {
+            () => {
                 console.log('Error occurred during searching user name before searching board contents')
                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
             }
@@ -411,7 +401,7 @@ exports.update = (req, res, next) => {
 
     if (title && content && id) {
         const checkUserQuery = `select (select user_role from user where user_id = "${id}") = 'admin' or (select user_id from board where idx = "${idx}") = "${id}" as correct;`
-        connection.query(checkUserQuery, function (error, check_result, fields) {
+        connection.query(checkUserQuery, function (error, check_result) {
             if (error) {
                 console.log('Update content failure during check user id into db');
                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
@@ -423,8 +413,8 @@ exports.update = (req, res, next) => {
                         board_content: content,
                         board_importance: importance
                     };
-                    const updateQuery = query.updateQuery('board', payload, {user_id: id})
-                    connection.query(updateQuery, function (err, results, fields) {
+                    const updateQuery = query.updateQuery('board', payload, {idx: idx, user_id: id})
+                    connection.query(updateQuery, function (err, results) {
                         if (err) {
                             console.log('Error occurred during updating board content')
                             next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
@@ -505,7 +495,7 @@ exports.delete = (req, res, next) => {
                     next(ApiError.badRequest('No control over deletion'))
                 }
             },
-            (err) => {
+            () => {
                 console.log('Error occurred during checking board author by idx before register comment')
                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
             }
@@ -519,7 +509,7 @@ exports.delete = (req, res, next) => {
 function deleteBoardData (idx, table) {
     const deleteQuery = `DELETE FROM ${table} WHERE idx = ${idx}`;
     return new Promise(((resolve, reject) => {
-        connection.query(deleteQuery, async function (err, results, fields) {
+        connection.query(deleteQuery, async function (err, results) {
             if (err) {
                 reject('Error occurred during deleting board')
             }
@@ -536,7 +526,7 @@ function deleteBoardData (idx, table) {
 function deleteFiles (idx, table) {
     const selectQuery = query.selectQuery(table, ['board_files_link'], {board_id: idx})
     return new Promise(((resolve, reject) => {
-        connection.query(selectQuery, async function (err, results, fields) {
+        connection.query(selectQuery, async function (err, results) {
             if (err) {
                 reject('Error occurred during reading all board files for deleting')
             }
@@ -574,7 +564,7 @@ exports.checkAuthor = (req, res, next) => {
                     }
                 })
             },
-            (err) => {
+            () => {
                 console.log('Error occurred during checking board author by idx before register comment')
                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
             }
@@ -589,9 +579,9 @@ exports.addComment = (req, res, next) => {
     const {id, comment, idx} = req.body;
     if (id && comment && idx) {
         getUserName(id).then(
-            (name) => {
+            () => {
                 const checkBoardIdxQuery = query.selectAllQuery('board', {'idx': idx})
-                connection.query(checkBoardIdxQuery, async function (err, checkResults, fields) {
+                connection.query(checkBoardIdxQuery, async function (err, checkResults) {
                     if (err){
                         console.log('Error occurred during checking board idx before register comment')
                         next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
@@ -603,7 +593,7 @@ exports.addComment = (req, res, next) => {
                             'board_comment_content': comment,
                             'user_id': id
                         })
-                        connection.query(addCommentQuery, async function (err, results, fields) {
+                        connection.query(addCommentQuery, async function (err, results) {
                             if (err){
                                 console.log('Error occurred during checking board idx before register comment')
                                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
@@ -646,8 +636,8 @@ async function mergeBoardContents(results, page = 1, itemsPerPage = 10) {
             idx: results[i].idx,
             title: results[i].board_title,
             content: results[i].board_content,
-            created_at: results[i].board_created_at.toISOString().split("T")[0],
-            view_count: results[i].board_view_count,
+            created_at: results[i]['board_created_at'].toISOString().split("T")[0],
+            view_count: results[i]['board_view_count'],
             importance: results[i].board_importance,
             author: results[i].user_id,
             comments: [],
@@ -671,7 +661,7 @@ function checkBoardAuthor(user_id, board_id, token, table) {
         checkLogin(user_id, token).then(
             () => {
                 const checkQuery = `select (select user_id from ${table} where idx = "${board_id}") = ("${user_id}") as is_same`
-                connection.query(checkQuery, async function (error, results, fields) {
+                connection.query(checkQuery, async function (error, results) {
                     if (error) {
                         reject('There is a problem with the server. Please try again in a few minutes.')
                     }
@@ -682,7 +672,7 @@ function checkBoardAuthor(user_id, board_id, token, table) {
                             isAdmin => {
                                 resolve(isAdmin)
                             },
-                            err => {
+                            () => {
                                 reject('There is a problem with the server. Please try again in a few minutes.')
                             }
                         )
@@ -703,7 +693,7 @@ function checkBoardAuthor(user_id, board_id, token, table) {
 function getUserName(user_id) {
     return new Promise(((resolve, reject) => {
         const selectQuery = query.selectQuery('user', ['user_name'], {'user_id': user_id})
-        connection.query(selectQuery, async function (error, results, fields) {
+        connection.query(selectQuery, async function (error, results) {
             if (error) {
                 reject('There is a problem with the server. Please try again in a few minutes.')
             }
@@ -719,7 +709,7 @@ function getUserName(user_id) {
 function getBoardComments(board_id, isLatestOrder = true) {
     return new Promise(((resolve, reject) => {
         const selectQuery = `select board_comment.board_comment_content, board_comment.board_comment_created_at, user.user_name from board_comment, user where board_id = ${board_id} and user.user_id = board_comment.user_id ORDER BY board_comment.board_comment_created_at ${isLatestOrder ? 'DESC' : 'ASC'}`;
-        connection.query(selectQuery, async function (error, results, fields) {
+        connection.query(selectQuery, async function (error, results) {
             if (error) {
                 reject('There is a problem with the server. Please try again in a few minutes.')
             }
@@ -742,7 +732,7 @@ function getBoardComments(board_id, isLatestOrder = true) {
 function getBoardFiles(board_id) {
     return new Promise(((resolve, reject) => {
         const selectQuery = query.selectQuery('board_files', ['board_files_name', 'board_files_link'], {board_id: board_id});
-        connection.query(selectQuery, async function (error, results, fields) {
+        connection.query(selectQuery, async function (error, results) {
             if (error) {
                 reject('There is a problem with the server. Please try again in a few minutes.')
             }
@@ -764,7 +754,7 @@ async function setSearchConditions(searchBy, keyword) {
     return new Promise(((resolve, reject) => {
         if (searchBy === 'author' || searchBy === 'total') {
             const selectUserQuery = `SELECT user_id, user_name FROM user WHERE user_name REGEXP "${keyword}"`;
-            connection.query(selectUserQuery, async function (err, userInfos, fields) {
+            connection.query(selectUserQuery, async function (err, userInfos) {
                 if (err) {
                     console.log('Error occurred during searching user name before searching board contents')
                     reject();
@@ -806,19 +796,24 @@ async function setSearchConditions(searchBy, keyword) {
 function updateBoardFiles(idx, files, table) {
     return new Promise(((resolve, reject) => {
         const deleteQuery = `DELETE FROM ${table} WHERE board_id = "${idx}"`;
-        connection.query(deleteQuery, async function (err, results, fields) {
+        connection.query(deleteQuery, async function (err) {
             if (err) {
                 reject(err)
             }
             else {
-                insertBoardFiles(idx, files).then(
-                    msg => {
-                        resolve(msg)
-                    },
-                    err => {
-                        reject(err)
-                    }
-                )
+                if (files.length > 0) {
+                    insertBoardFiles(idx, files).then(
+                        msg => {
+                            resolve(msg)
+                        },
+                        err => {
+                            reject(err)
+                        }
+                    )
+                }
+                else {
+                    resolve('There is no input files');
+                }
             }
         })
     }))
@@ -833,7 +828,7 @@ function insertBoardFiles(board_id, files){
                 registerAttachQuery += ', '
             }
         }
-        connection.query(registerAttachQuery, function (error, results, fields) {
+        connection.query(registerAttachQuery, function (error, results) {
             if (error) {
                 console.log('Register failure during input board file data into db');
                 reject('There is a problem with the server. Please try again in a few minutes.');

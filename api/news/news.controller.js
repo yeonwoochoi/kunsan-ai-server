@@ -6,15 +6,13 @@ const secret = config.KEY.secret;
 const jwt_secret = config.KEY.jwt_secret;
 const query = require('../../config/query')
 const ApiError = require("../error/api-error");
+const { dirname } = require('path');
+const fs = require("fs");
+const { constants, promises: { access } } = require('fs');
+const appDir = dirname(require.main.filename);
+const {checkLogin, checkAdmin} = require("../auth/auth.controller");
 const address = require('../../config/address').IP;
 
-exports.test = (req, res, next) => {
-    console.log(req.headers)
-    res.status(200).json({
-        body: req.body,
-        files: req.files
-    })
-}
 
 exports.create = (req, res, next) => {
     console.log('create news content called')
@@ -42,7 +40,6 @@ exports.create = (req, res, next) => {
                     payload.news_importance = 0;
                 }
                 const registerNewsContentQuery = query.insertQuery('news', payload);
-                console.log(`register query : ${registerNewsContentQuery}`)
                 connection.query(registerNewsContentQuery, function (error, results, fields) {
                     if (error) {
                         console.log('Register failure during input news data into db');
@@ -67,7 +64,6 @@ exports.create = (req, res, next) => {
                                         registerAttachQuery += ', '
                                     }
                                 }
-                                console.log(registerAttachQuery)
                                 connection.query(registerAttachQuery, function (error, results, fields) {
                                     if (error) {
                                         console.log('Register failure during input news file data into db');
@@ -142,7 +138,7 @@ exports.readAll = (req, res, next) => {
     })
 }
 
-exports.read = (req, res, next) => {
+exports.readByIndex = (req, res, next) => {
     const {idx} = req.params;
     const selectAllQuery = `SELECT * FROM news where idx = ${idx}`
     connection.query(selectAllQuery, async function (error, results, fields) {
@@ -156,8 +152,8 @@ exports.read = (req, res, next) => {
                 idx: results[0].idx,
                 title: results[0].news_title,
                 content: results[0].news_content,
-                created_at: results[0].news_created_at.toISOString().split("T")[0],
-                view_count: results[0].news_view_count,
+                created_at: results[0]['news_created_at'].toISOString().split("T")[0],
+                view_count: results[0]['news_view_count'],
                 importance: results[0].news_importance,
                 author: results[0].user_id,
                 comments: [],
@@ -190,7 +186,6 @@ exports.read = (req, res, next) => {
 exports.addViewCount = (req, res, next) => {
     const {idx} = req.params;
     const updateQuery = `UPDATE news SET news_view_count = news_view_count + 1 WHERE idx = ${idx}`
-    console.log(updateQuery)
 
     connection.query(updateQuery, function (error, results, fields) {
         if (error) {
@@ -412,30 +407,6 @@ exports.getNewsContentInPage = async (req, res, next) => {
     }
 }
 
-exports.update = (req, res, next) => {
-    const {user_id, news_id} = req.body;
-    checkAuthor(user_id, news_id).then(
-        (isSame) => {
-            if (isSame) {
-                res.status(200).json({
-                    data: isSame
-                })
-            }
-            else {
-                next(ApiError.badRequest('Only the author or admin can edit it.'));
-            }
-        },
-        (err) => {
-            next(ApiError.badRequest(err));
-        }
-    )
-}
-
-exports.delete = (req, res, next) => {
-
-
-}
-
 async function mergeNewsContents(results, page = 1, itemsPerPage = 10) {
     let totalResults = [];
     for (let i = 0; i < results.length; i++) {
@@ -444,9 +415,9 @@ async function mergeNewsContents(results, page = 1, itemsPerPage = 10) {
             idx: results[i].idx,
             title: results[i].news_title,
             content: results[i].news_content,
-            created_at: results[i].news_created_at.toISOString().split("T")[0],
-            view_count: results[i].news_view_count,
-            importance: results[i].news_importance,
+            created_at: results[i]['news_created_at'].toISOString().split("T")[0],
+            view_count: results[i]['news_view_count'],
+            importance: results[i]['news_importance'],
             author: results[i].user_id,
             comments: [],
             attach: []
@@ -506,8 +477,8 @@ function getNewsFiles(news_id) {
             else if (results.length > 0) {
                 resolve(results.map(x => {
                     return {
-                        link: `${address.ip}:${address.port}/${address.path}/${x.news_files_link}`,
-                        name: x.news_files_name
+                        link: `${address.ip}:${address.port}/${address.path}/${x['news_files_link']}`,
+                        name: x['news_files_name']
                     }
                 }))
             } else {
@@ -558,4 +529,243 @@ async function setSearchConditions(searchBy, keyword) {
             resolve(`news_content REGEXP "${keyword}"`)
         }
     }))
+}
+
+exports.update = (req, res, next) => {
+    console.log('update news content called')
+    const { title, content, id, idx } = req.body;
+    const files = req.files;
+    const importance = 0;
+
+    if (title && content && id) {
+        const checkUserQuery = `select (select user_role from user where user_id = "${id}") = 'admin' as correct`
+        connection.query(checkUserQuery, function (error, check_result) {
+            if (error) {
+                console.log('Update content failure during check user id into db');
+                next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+            }
+            else if (check_result.length > 0) {
+                if (check_result[0]['correct'] === 1) {
+                    const payload = {
+                        news_title: title,
+                        news_content: content,
+                        news_importance: importance
+                    };
+                    const updateQuery = query.updateQuery('news', payload, {idx: idx, user_id: id})
+                    connection.query(updateQuery, function (err, results) {
+                        if (err) {
+                            console.log('Error occurred during updating news content')
+                            next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+                            return;
+                        }
+                        if (results.affectedRows > 0) {
+                            deleteFiles(idx, 'news_files').then(
+                                () => {
+                                    updateNewsFiles(idx, files, 'news_files').then(
+                                        msg => {
+                                            res.status(200).json({
+                                                status: 200,
+                                                msg: msg
+                                            })
+                                        },
+                                        err => {
+                                            next(ApiError.badRequest(err))
+                                        }
+                                    )
+                                },
+                                err => {
+                                    next(ApiError.badRequest(err))
+                                }
+                            )
+                        }
+                        else {
+                            console.log('There is nothing to update')
+                            next(ApiError.badRequest('There is nothing to update'))
+                        }
+                    })
+                }
+                else {
+                    console.log('Accessed by users other than admin or author');
+                    next(ApiError.badRequest('Invalid access. Please logout and try again.'));
+                }
+            }
+            else {
+                console.log('Update content failure during check user id into db');
+                next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+            }
+        })
+    }
+    else {
+        next(ApiError.badRequest('Please fill in all the values'));
+    }
+}
+
+exports.delete = (req, res, next) => {
+    const {idx, id, table} = req.body;
+    let accessToken = req.headers['x-access-token'];
+    if (id && idx && table) {
+        checkAdmin(id, accessToken).then(
+            isAdmin => {
+                if (isAdmin) {
+                    deleteFiles(idx, 'news_files').then(
+                        () => {
+                            deleteNewsData(idx, table).then(
+                                msg => {
+                                    res.status(200).json({
+                                        status: 200,
+                                        msg: msg
+                                    })
+                                },
+                                err => {
+                                    next(ApiError.badRequest(err))
+                                }
+                            )
+                        },
+                        err => {
+                            next(ApiError.badRequest(err))
+                        }
+                    )
+                }
+                else {
+                    next(ApiError.badRequest('No control over deletion'))
+                }
+            },
+            () => {
+                console.log('Error occurred during checking news author by idx before register comment')
+                next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+            }
+        )
+    }
+    else {
+        next(ApiError.badRequest('Please input all data'))
+    }
+}
+
+function deleteNewsData (idx, table) {
+    const deleteQuery = `DELETE FROM ${table} WHERE idx = ${idx}`;
+    return new Promise(((resolve, reject) => {
+        connection.query(deleteQuery, async function (err, results) {
+            if (err) {
+                reject('Error occurred during deleting news')
+            }
+            else if (results.affectedRows > 0) {
+                resolve('News data deletion success')
+            }
+            else {
+                reject('That data does not exist already')
+            }
+        })
+    }))
+}
+
+function deleteFiles (idx, table) {
+    const selectQuery = query.selectQuery(table, ['news_files_link'], {news_id: idx})
+    return new Promise(((resolve, reject) => {
+        connection.query(selectQuery, async function (err, results) {
+            if (err) {
+                reject('Error occurred during reading all news files for deleting')
+            }
+            else if (results.length > 0) {
+                for (let i = 0; i < results.length; i++) {
+                    let path = `${appDir}/uploads/${results[i]['news_files_link']}`
+                    try {
+                        await access(path, constants.F_OK);
+                        await fs.unlinkSync(path)
+                    } catch (e) {
+                        console.error(`The file path (${path}) does not exist`)
+                    }
+                }
+                resolve();
+            }
+            else {
+                resolve('There is nothing to be attached in this news content')
+            }
+        })
+    }))
+}
+
+function updateNewsFiles(idx, files, table) {
+    return new Promise(((resolve, reject) => {
+        const deleteQuery = `DELETE FROM ${table} WHERE news_id = "${idx}"`;
+        connection.query(deleteQuery, async function (err) {
+            if (err) {
+                reject(err)
+            }
+            else {
+                if (files.length > 0) {
+                    insertNewsFiles(idx, files).then(
+                        msg => {
+                            resolve(msg)
+                        },
+                        err => {
+                            reject(err)
+                        }
+                    )
+                }
+                else {
+                    resolve('There is no input files');
+                }
+            }
+        })
+    }))
+}
+
+function insertNewsFiles(news_id, files){
+    return new Promise(((resolve, reject) => {
+        let registerAttachQuery = 'INSERT INTO news_files (news_files_link, news_files_name, news_id) VALUES ';
+        for (let i = 0; i < files.length; i++) {
+            registerAttachQuery += `( "${files[i].filename}", "${files[i].originalname}", "${news_id}" )`
+            if (i < files.length - 1) {
+                registerAttachQuery += ', '
+            }
+        }
+        console.log(registerAttachQuery)
+        connection.query(registerAttachQuery, function (error, results) {
+            if (error) {
+                console.log('Register failure during input news file data into db');
+                reject('There is a problem with the server. Please try again in a few minutes.');
+            }
+            else if (results.affectedRows > 0 || results.changedRows > 0) {
+                resolve('Register news content success')
+            }
+            else {
+                console.log('Register news files failed')
+                reject('There is a problem with the server. Please try again in a few minutes.')
+            }
+        })
+    }))
+}
+
+function checkNewsAuthor(user_id, news_id, token, table) {
+    return new Promise((resolve, reject) => {
+        checkLogin(user_id, token).then(
+            () => {
+                const checkQuery = `select (select user_id from ${table} where idx = "${news_id}") = ("${user_id}") as is_same`
+                connection.query(checkQuery, async function (error, results) {
+                    if (error) {
+                        reject('There is a problem with the server. Please try again in a few minutes.')
+                    }
+                    else if (results[0]['is_same'] === 1) {
+                        resolve(true)
+                    } else {
+                        checkAdmin(user_id, token).then(
+                            isAdmin => {
+                                resolve(isAdmin)
+                            },
+                            () => {
+                                reject('There is a problem with the server. Please try again in a few minutes.')
+                            }
+                        )
+                    }
+                })
+            },
+            isUserNotMatchErr => {
+                if (isUserNotMatchErr) {
+                    reject('Invalid access. Please logout and try again.')
+                } else {
+                    resolve(false)
+                }
+            }
+        )
+    })
 }
