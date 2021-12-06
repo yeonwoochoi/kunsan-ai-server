@@ -6,10 +6,14 @@ const secret = config.KEY.secret;
 const jwt_secret = config.KEY.jwt_secret;
 const query = require('../../config/query')
 const ApiError = require("../error/api-error");
+const {checkAdmin, checkLogin} = require("../auth/auth.controller");
+const { dirname } = require('path');
+const fs = require("fs");
+const { constants, promises: { access } } = require('fs');
+const appDir = dirname(require.main.filename);
 const address = require('../../config/address').IP;
 
 exports.test = (req, res, next) => {
-    console.log(req.headers)
     res.status(200).json({
         body: req.body,
         files: req.files
@@ -42,7 +46,6 @@ exports.create = (req, res, next) => {
                     payload.board_importance = 0;
                 }
                 const registerBoardContentQuery = query.insertQuery('board', payload);
-                console.log(registerBoardContentQuery)
                 connection.query(registerBoardContentQuery, function (error, results, fields) {
                     if (error) {
                         console.log('Register failure during input board data into db');
@@ -142,7 +145,7 @@ exports.readAll = (req, res, next) => {
     })
 }
 
-exports.read = (req, res, next) => {
+exports.readByIndex = (req, res, next) => {
     const {idx} = req.params;
     const selectAllQuery = `SELECT * FROM board where idx = ${idx}`
     connection.query(selectAllQuery, async function (error, results, fields) {
@@ -191,7 +194,6 @@ exports.read = (req, res, next) => {
 exports.addViewCount = (req, res, next) => {
     const {idx} = req.params;
     const updateQuery = `UPDATE board SET board_view_count = board_view_count + 1 WHERE idx = ${idx}`
-    console.log(updateQuery)
 
     connection.query(updateQuery, function (error, results, fields) {
         if (error) {
@@ -414,27 +416,170 @@ exports.getBoardContentInPage = async (req, res, next) => {
 }
 
 exports.update = (req, res, next) => {
-    const {user_id, board_id} = req.body;
-    checkAuthor(user_id, board_id).then(
-        (isSame) => {
-            if (isSame) {
-                res.status(200).json({
-                    data: isSame
-                })
+    console.log('update board content called')
+    const { title, content, id, idx } = req.body;
+    const files = req.files;
+    const importance = (req.body.importance === 'true') ? 1 : 0;
+
+    if (title && content && id) {
+        const checkUserQuery = `select (select user_role from user where user_id = "${id}") = 'admin' or (select user_id from board where idx = "${idx}") = "${id}" as correct;`
+        connection.query(checkUserQuery, function (error, check_result, fields) {
+            if (error) {
+                console.log('Update content failure during check user id into db');
+                next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+            }
+            else if (check_result.length > 0) {
+                if (check_result[0]['correct'] === 1) {
+                    const payload = {
+                        board_title: title,
+                        board_content: content,
+                        board_importance: importance
+                    };
+                    const updateQuery = query.updateQuery('board', payload, {user_id: id})
+                    connection.query(updateQuery, function (err, results, fields) {
+                        if (err) {
+                            console.log('Error occurred during updating board content')
+                            next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+                            return;
+                        }
+                        // update할 때만 해당됨.. insert 할 땐 affectedRows 가 "생성된 rows 수"를 의미
+                        // affectedRows : where절로 검색된 rows 수
+                        // changedRows : 실제로 update된 rows 수
+                        if (results.changedRows > 0 && results.affectedRows > 0) {
+                            // TODO : delete all board_files (query 써서)
+                            // server uploads에 저장된 file들을 제거
+                            // deleteFiles(idx, 'board_files').then()
+                        }
+                        else {
+                            console.log('There is nothing to update')
+                            next(ApiError.badRequest('There is nothing to update'))
+                        }
+                    })
+                }
+                else {
+                    console.log('Accessed by users other than admin or author');
+                    next(ApiError.badRequest('Invalid access. Please logout and try again.'));
+                }
             }
             else {
-                next(ApiError.badRequest('Only the author or admin can edit it.'));
+                console.log('Update content failure during check user id into db');
+                next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
             }
-        },
-        (err) => {
-            next(ApiError.badRequest(err));
-        }
-    )
+        })
+    }
+    else {
+        next(ApiError.badRequest('Please fill in all the values'));
+    }
 }
 
 exports.delete = (req, res, next) => {
+    const {idx, id, table} = req.body;
+    let accessToken = req.headers['x-access-token'];
+    if (id && idx && table) {
+        checkBoardAuthor(id, idx, accessToken, table).then(
+            (isSame) => {
+                if (isSame) {
+                    deleteFiles(idx, 'board_files').then(
+                        () => {
+                            deleteBoardData(idx, table).then(
+                                msg => {
+                                    res.status(200).json({
+                                        status: 200,
+                                        msg: msg
+                                    })
+                                },
+                                err => {
+                                    next(ApiError.badRequest(err))
+                                }
+                            )
+                        },
+                        err => {
+                            next(ApiError.badRequest(err))
+                        }
+                    )
+                }
+                else {
+                    next(ApiError.badRequest('No control over deletion'))
+                }
+            },
+            (err) => {
+                console.log('Error occurred during checking board author by idx before register comment')
+                next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+            }
+        )
+    }
+    else {
+        next(ApiError.badRequest('Please input all data'))
+    }
+}
 
+function deleteBoardData (idx, table) {
+    const deleteQuery = `DELETE FROM ${table} WHERE idx = ${idx}`;
+    return new Promise(((resolve, reject) => {
+        connection.query(deleteQuery, async function (err, results, fields) {
+            if (err) {
+                reject('Error occurred during deleting board')
+            }
+            else if (results.affectedRows > 0) {
+                resolve('Board data deletion success')
+            }
+            else {
+                reject('That data does not exist already')
+            }
+        })
+    }))
+}
 
+function deleteFiles (idx, table) {
+    const selectQuery = query.selectQuery(table, ['board_files_link'], {board_id: idx})
+    return new Promise(((resolve, reject) => {
+        connection.query(selectQuery, async function (err, results, fields) {
+            if (err) {
+                reject('Error occurred during reading all board files for deleting')
+            }
+            else if (results.length > 0) {
+                for (let i = 0; i < results.length; i++) {
+                    let path = `${appDir}/uploads/${results[i]['board_files_link']}`
+                    try {
+                        await access(path, constants.F_OK);
+                        await fs.unlinkSync(path)
+                    } catch (e) {
+                        console.error(`The file path (${path}) does not exist`)
+                    }
+                }
+                resolve();
+            }
+            else {
+                console.log('called')
+                resolve('There is nothing to be attached in this board content')
+            }
+        })
+    }))
+}
+
+exports.checkAuthor = (req, res, next) => {
+    const {idx, id, table} = req.body;
+    const accessToken = req.headers['x-access-token'];
+    if (id && idx) {
+        checkBoardAuthor(id, idx, accessToken, table).then(
+            (isSame) => {
+                res.status(200).json({
+                    status: 200,
+                    msg: 'Check board author success',
+                    data: {
+                        isAuthor: isSame
+                    }
+                })
+            },
+            (err) => {
+                console.log('Error occurred during checking board author by idx before register comment')
+                next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+            }
+        )
+    }
+    else {
+        next(ApiError.badRequest('Please input all data'))
+    }
 }
 
 exports.addComment = (req, res, next) => {
@@ -518,19 +663,37 @@ async function mergeBoardContents(results, page = 1, itemsPerPage = 10) {
     return totalResults;
 }
 
-function checkAuthor(user_id, board_id) {
+function checkBoardAuthor(user_id, board_id, token, table) {
     return new Promise((resolve, reject) => {
-        const checkQuery = `select (select user_id from board where idx = "${board_id}") = ("${user_id}") as is_same`
-        connection.query(checkQuery, async function (error, results, fields) {
-            if (error) {
-                reject('There is a problem with the server. Please try again in a few minutes.')
+        checkLogin(user_id, token).then(
+            () => {
+                const checkQuery = `select (select user_id from ${table} where idx = "${board_id}") = ("${user_id}") as is_same`
+                connection.query(checkQuery, async function (error, results, fields) {
+                    if (error) {
+                        reject('There is a problem with the server. Please try again in a few minutes.')
+                    }
+                    else if (results[0]['is_same'] === 1) {
+                        resolve(true)
+                    } else {
+                        checkAdmin(user_id, token).then(
+                            isAdmin => {
+                                resolve(isAdmin)
+                            },
+                            err => {
+                                reject('There is a problem with the server. Please try again in a few minutes.')
+                            }
+                        )
+                    }
+                })
+            },
+            isUserNotMatchErr => {
+                if (isUserNotMatchErr) {
+                    reject('Invalid access. Please logout and try again.')
+                } else {
+                    resolve(false)
+                }
             }
-            else if (results[0]['is_same'] === 1) {
-                resolve(true)
-            } else {
-                resolve(false)
-            }
-        })
+        )
     })
 }
 
