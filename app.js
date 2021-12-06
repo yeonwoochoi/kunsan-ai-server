@@ -4,6 +4,7 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const apiErrorHandler = require('./api/error/api-error-handler')
 const address = require('./config/address').IP
+const cookieParser = require('cookie-parser')
 
 app.set('port', process.env.PORT || 3000);
 app.use(cors());
@@ -12,6 +13,9 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({
     extended: true
 }));
+
+app.use(cookieParser(process.env.COOKIE_SECRET, { sameSite: "none", secure: true }));
+
 app.use('/uploads', express.static('uploads'));
 
 app.use('/users', require('./api/users/user'));
