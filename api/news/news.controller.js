@@ -631,7 +631,7 @@ exports.delete = (req, res, next) => {
                 }
             },
             () => {
-                console.log('Error occurred during checking news author by idx before register comment')
+                console.log('Error occurred during checking admin before deleting news content')
                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
             }
         )
@@ -719,7 +719,7 @@ function insertNewsFiles(news_id, files){
                 registerAttachQuery += ', '
             }
         }
-        console.log(registerAttachQuery)
+
         connection.query(registerAttachQuery, function (error, results) {
             if (error) {
                 console.log('Register failure during input news file data into db');
