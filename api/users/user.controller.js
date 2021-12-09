@@ -126,6 +126,7 @@ exports.register = (req, res, next) => {
 exports.resetPwd = (req, res, next) => {
     const {email} = req.body;
     const temp_pwd = randomPwdGenerator();
+    //const temp_pwd = '123123123';
     const selectQuery = query.selectQuery('user', ['user_id'], {'user_id': email})
     connection.query(selectQuery, function (error, check_result, fields) {
         if (error) {

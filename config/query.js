@@ -27,6 +27,9 @@ const updateQuery = (table, newValues, where) => {
 }
 
 const selectAllQuery = (table, where) => {
+    if (!where) {
+        return `SELECT * FROM ${table}`;
+    }
     let query = `SELECT * FROM ${table} WHERE `;
 
     const whereKeys = Object.keys(where);

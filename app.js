@@ -23,6 +23,7 @@ app.use('/auth', require('./api/auth/auth'));
 app.use('/board', require('./api/board/board'));
 app.use('/news', require('./api/news/news'));
 app.use('/projects', require('./api/projects/project'));
+app.use('/publications', require('./api/publication/publication'));
 
 app.use(apiErrorHandler);
 
