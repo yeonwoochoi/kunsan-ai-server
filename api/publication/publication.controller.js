@@ -12,7 +12,53 @@ const {checkAdmin} = require("../auth/auth.controller");
 
 
 exports.create = (req, res, next) => {
-
+    const {year, header, title, content, link, id} = req.body;
+    const accessToken = req.headers['x-access-token'];
+    if (id) {
+        if (year && header && title && content && link) {
+            checkAdmin(id, accessToken).then(
+                isAdmin => {
+                    if (isAdmin) {
+                        const insertQuery = query.insertQuery('publication', {
+                            publication_year: year,
+                            publication_header: header,
+                            publication_title: title,
+                            publication_content: content,
+                            publication_link: link
+                        })
+                        connection.query(insertQuery, async function (err, results) {
+                            if (err) {
+                                console.log('Create publication contents failure from db');
+                                next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+                            }
+                            else if (results.affectedRows === 1) {
+                                res.status(200).json({
+                                    status: 200,
+                                    msg: 'Create publication content success'
+                                })
+                            }
+                            else {
+                                console.log('Create publication content failure')
+                                next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+                            }
+                        })
+                    }
+                    else {
+                        next(ApiError.badRequest('No control over creation'))
+                    }
+                },
+                () => {
+                    console.log('Error occurred during checking admin before creating publication content')
+                    next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+                })
+        }
+        else {
+            next(ApiError.badRequest('Please input all data'))
+        }
+    }
+    else {
+        next(ApiError.badRequest('No control over creation'))
+    }
 }
 
 exports.delete = (req, res, next) => {
@@ -26,7 +72,7 @@ exports.delete = (req, res, next) => {
                     connection.query(deleteQuery, async function (err, results) {
                         if (err) {
                             console.log('Delete publication contents failure from db');
-
+                            next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                         }
                         else if (results.affectedRows > 0) {
                             res.status(200).json({
@@ -50,12 +96,58 @@ exports.delete = (req, res, next) => {
         )
     }
     else {
-        next(ApiError.badRequest('Please input all data'))
+        next(ApiError.badRequest('No control over deletion'))
     }
 }
 
 exports.update = (req, res, next) => {
-
+    const {year, header, title, content, link, id, idx} = req.body;
+    const accessToken = req.headers['x-access-token'];
+    if (id && idx) {
+        if (year && header && title && content && link) {
+            checkAdmin(id, accessToken).then(
+                isAdmin => {
+                    if (isAdmin) {
+                        const updateQuery = query.updateQuery('publication', {
+                            publication_year: year,
+                            publication_header: header,
+                            publication_title: title,
+                            publication_content: content,
+                            publication_link: link
+                        }, {idx: idx})
+                        connection.query(updateQuery, async function (err, results) {
+                            if (err) {
+                                console.log('Update publication contents failure from db');
+                                next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+                            }
+                            else if (results.affectedRows > 0) {
+                                res.status(200).json({
+                                    status: 200,
+                                    msg: 'Update publication content success'
+                                })
+                            }
+                            else {
+                                console.log('Update publication content failure')
+                                next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+                            }
+                        })
+                    }
+                    else {
+                        next(ApiError.badRequest('No control over update'))
+                    }
+                },
+                () => {
+                    console.log('Error occurred during checking admin before updating publication content')
+                    next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+                })
+        }
+        else {
+            next(ApiError.badRequest('Please input all data'))
+        }
+    }
+    else {
+        next(ApiError.badRequest('No control over update'))
+    }
 }
 
 exports.readAll = (req, res, next) => {
@@ -83,7 +175,38 @@ exports.readAll = (req, res, next) => {
 }
 
 exports.read = (req, res, next) => {
-
+    const {idx} = req.params;
+    if (idx) {
+        const selectAllQuery = query.selectAllQuery('publication', {idx: idx});
+        connection.query(selectAllQuery, function (err, results){
+            if (err) {
+                console.log('Read publication content by index failure from db');
+                next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+            }
+            else if (results.length > 0) {
+                const total_result = {
+                    idx: results[0].idx,
+                    year: results[0].publication_year,
+                    header: results[0].publication_header,
+                    title: results[0].publication_title,
+                    content: results[0].publication_content,
+                    link: results[0].publication_link,
+                }
+                res.status(200).json({
+                    status: 200,
+                    msg: 'Read publication content by index success',
+                    data: total_result
+                })
+            }
+            else {
+                console.log('There is no publication content corresponding to index '+ idx)
+                next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+            }
+        })
+    }
+    else {
+        next(ApiError.badRequest('Please input all data'))
+    }
 }
 
 const processPublicationContents = (prevContents) => {

@@ -13,12 +13,12 @@ const appDir = dirname(require.main.filename);
 
 exports.registerProject = (req, res, next) => {
     const {title, content, from, to, sponsor} = req.body;
-    const file = req.file;
+    let file = req.file;
     if (title.length > 0 && content.length > 0) {
         const insertQuery = query.insertQuery('project', {
             project_title: title,
             project_content: content,
-            project_image_link: file.filename,
+            project_image_link: !file ? null : file.filename,
             project_from: from,
             project_to: to,
             project_sponsor: sponsor
@@ -29,7 +29,7 @@ exports.registerProject = (req, res, next) => {
                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                 return;
             }
-            if (results.affectedRows > 0 || results.changedRows > 0) {
+            if (results.affectedRows === 1) {
                 res.status(200).json({
                     'status': 200,
                     'msg': 'Register project content success'

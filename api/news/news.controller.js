@@ -47,7 +47,7 @@ exports.create = (req, res, next) => {
                         return;
                     }
                     console.log(results)
-                    if (results.affectedRows > 0 || results.changedRows > 0) {
+                    if (results.affectedRows === 1) {
                         if (files.length > 0) {
                             const getNewsIdQuery = query.selectQuery('news', ['idx'], payload)
                             connection.query(getNewsIdQuery, function (error, news_id_results, fields) {
@@ -70,7 +70,7 @@ exports.create = (req, res, next) => {
                                         next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                                         return;
                                     }
-                                    if (results.affectedRows > 0 || results.changedRows > 0) {
+                                    if (results.affectedRows > 0) {
                                         res.status(200).json({
                                             'status': 200,
                                             'msg': 'Register news content success'
@@ -193,7 +193,7 @@ exports.addViewCount = (req, res, next) => {
             next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
             return;
         }
-        if (results.affectedRows > 0 && results.changedRows > 0) {
+        if (results.affectedRows > 0) {
             res.status(200).json({
                 msg: 'Updating news view count success',
                 status: 200,
@@ -725,7 +725,7 @@ function insertNewsFiles(news_id, files){
                 console.log('Register failure during input news file data into db');
                 reject('There is a problem with the server. Please try again in a few minutes.');
             }
-            else if (results.affectedRows > 0 || results.changedRows > 0) {
+            else if (results.affectedRows > 0) {
                 resolve('Register news content success')
             }
             else {

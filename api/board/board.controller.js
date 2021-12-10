@@ -43,7 +43,7 @@ exports.create = (req, res, next) => {
                         return;
                     }
                     console.log(results)
-                    if (results.affectedRows > 0 || results.changedRows > 0) {
+                    if (results.affectedRows === 1) {
                         if (files.length > 0) {
                             const getBoardIdQuery = query.selectQuery('board', ['idx'], payload)
                             connection.query(getBoardIdQuery, function (error, board_id_results) {
@@ -177,7 +177,7 @@ exports.addViewCount = (req, res, next) => {
             next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
             return;
         }
-        if (results.affectedRows > 0 && results.changedRows > 0) {
+        if (results.affectedRows > 0) {
             res.status(200).json({
                 msg: 'Updating board view count success',
                 status: 200,
@@ -599,7 +599,7 @@ exports.addComment = (req, res, next) => {
                                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                                 return;
                             }
-                            if (results.affectedRows > 0 || results.changedRows > 0) {
+                            if (results.affectedRows === 1) {
                                 console.log('Register board comment success')
                                 res.status(200).json({
                                     status: 200,
@@ -833,7 +833,7 @@ function insertBoardFiles(board_id, files){
                 console.log('Register failure during input board file data into db');
                 reject('There is a problem with the server. Please try again in a few minutes.');
             }
-            else if (results.affectedRows > 0 || results.changedRows > 0) {
+            else if (results.affectedRows > 0) {
                 resolve('Register board content success')
             }
             else {
