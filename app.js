@@ -24,6 +24,8 @@ app.use('/board', require('./api/board/board'));
 app.use('/news', require('./api/news/news'));
 app.use('/projects', require('./api/projects/project'));
 app.use('/publications', require('./api/publication/publication'));
+app.use('/member', require('./api/member/member'));
+app.use('/professor', require('./api/professor/professor'));
 
 app.use(apiErrorHandler);
 
