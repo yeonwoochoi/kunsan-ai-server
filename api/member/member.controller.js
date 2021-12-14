@@ -12,23 +12,23 @@ const appDir = dirname(require.main.filename);
 
 
 exports.registerMember = (req, res, next) => {
-    const {rank, name, email, phone, research_area, id, idx} = req.body;
+    const {rank, name, email, phone, researchArea, id} = req.body;
     let file = req.file;
     let accessToken = req.headers['x-access-token'];
-
-    if (id && idx) {
+    if (id) {
         checkAdmin(id, accessToken).then(
             isAdmin => {
                 if (isAdmin) {
-                    if (rank && name) {
+                    if (rank && name && email) {
                         const insertQuery = query.insertQuery('member', {
                             member_rank: rank,
                             member_name: name,
                             member_email: email,
                             member_phone: phone,
-                            member_research_area: research_area,
+                            member_research_area: researchArea,
                             member_image: !file ? null : file.filename
                         })
+                        console.log(`create : ${file.filename}`)
                         connection.query(insertQuery, function (error, results, fields) {
                             if (error) {
                                 console.log('Register member failure');
@@ -114,23 +114,10 @@ exports.readAllMembers = (req, res, next) => {
             return;
         }
         if (results.length > 0) {
-            let totalResults = [];
-            for (let i = 0; i < results.length; i++) {
-                let result = {
-                    idx: results[i]['idx'],
-                    rank: results[i]['member_rank'],
-                    name: results[i]['member_name'],
-                    imgSrc: `${address.ip}:${address.port}/${address.path}/${results[i]['member_image']}`,
-                    email: results[i]['member_email'],
-                    phone: results[i]['member_phone'],
-                    researchArea: results[i]['member_research_area'],
-                }
-                totalResults.push(result)
-            }
             res.status(200).json({
                 msg: 'Read all member data success',
                 status: 200,
-                data: totalResults
+                data: processMemberContents(results)
             })
         } else {
             console.log('No member data')
@@ -144,7 +131,7 @@ exports.readAllMembers = (req, res, next) => {
 }
 
 exports.updateMember = (req, res, next) => {
-    const {rank, name, email, phone, research_area, id, idx} = req.body;
+    const {rank, name, email, phone, researchArea, id, idx} = req.body;
     let accessToken = req.headers['x-access-token'];
     const file = req.file;
 
@@ -152,15 +139,16 @@ exports.updateMember = (req, res, next) => {
         checkAdmin(id, accessToken).then(
             isAdmin => {
                 if (isAdmin) {
-                    if (rank && name) {
+                    if (rank && name && email) {
                         const payload = {
                             member_rank: rank,
                             member_name: name,
                             member_email: email,
                             member_phone: phone,
-                            member_research_area: research_area,
+                            member_research_area: researchArea,
                             member_image: !file ? null : file.filename
                         }
+                        console.log(`update : ${file.filename}`)
                         const updateQuery = query.updateQuery('member', payload, {idx: idx})
                         connection.query(updateQuery, function (err, results) {
                             if (err) {
@@ -307,4 +295,45 @@ function deleteMemberFiles (idx) {
             }
         })
     }))
+}
+
+const processMemberContents = (prevContents) => {
+    let results = [];
+
+    let rankRef = [];
+
+    prevContents.forEach(element => {
+        let rankTemp = element['member_rank'];
+        if (!rankRef.includes(rankTemp)) {
+            rankRef.push(rankTemp)
+        }
+    })
+
+
+    rankRef.sort((x, y) => {
+        if (x > y) {return 1;}
+        if (x < y) {return -1;}
+        return 0;
+    })
+
+    for (let i = 0; i < rankRef.length; i++) {
+        let temp = prevContents.filter(element => element['member_rank'] === rankRef[i]);
+        results.push({
+            rank: rankRef[i],
+            members: []
+        })
+        for (let k = 0; k < temp.length; k++) {
+            results[i].members.push({
+                idx: temp[k]['idx'],
+                name: temp[k]['member_name'],
+                email: temp[k]['member_email'],
+                phone: temp[k]['member_phone'],
+                researchArea: temp[k]['member_research_area'],
+                imgSrc: `${address.ip}:${address.port}/${address.path}/${temp[k]['member_image']}`,
+                isConfirmOpen: false,
+            })
+        }
+    }
+
+    return results
 }

@@ -12,15 +12,15 @@ const appDir = dirname(require.main.filename);
 
 
 exports.registerProfessor = (req, res, next) => {
-    const {rank, name, degree, email, phone, education, experience, affiliation, id, idx} = req.body;
+    const {rank, name, degree, email, phone, education, experience, affiliation, id} = req.body;
     let file = req.file;
     let accessToken = req.headers['x-access-token'];
 
-    if (id && idx) {
+    if (id) {
         checkAdmin(id, accessToken).then(
             isAdmin => {
                 if (isAdmin) {
-                    if (rank && name) {
+                    if (rank && name && email) {
                         const insertQuery = query.insertQuery('professor', {
                             professor_rank: rank,
                             professor_name: name,
@@ -120,26 +120,10 @@ exports.readAllProfessor = (req, res, next) => {
             return;
         }
         if (results.length > 0) {
-            let totalResults = [];
-            for (let i = 0; i < results.length; i++) {
-                let result = {
-                    idx: results[i]['idx'],
-                    rank: results[i]['professor_rank'],
-                    name: results[i]['professor_name'],
-                    degree: results[i]['professor_degree'],
-                    email: results[i]['professor_email'],
-                    phone: results[i]['professor_phone'],
-                    education: results[i]['professor_education'],
-                    experience: results[i]['professor_experience'],
-                    affiliation: results[i]['professor_affiliation'],
-                    imgSrc: `${address.ip}:${address.port}/${address.path}/${results[i]['professor_image']}`,
-                }
-                totalResults.push(result)
-            }
             res.status(200).json({
                 msg: 'Read all professor data success',
                 status: 200,
-                data: totalResults
+                data: processProfessorContents(results)
             })
         } else {
             console.log('No professor data')
@@ -161,7 +145,7 @@ exports.updateProfessor = (req, res, next) => {
         checkAdmin(id, accessToken).then(
             isAdmin => {
                 if (isAdmin) {
-                    if (rank && name) {
+                    if (rank && name && email) {
                         const payload = {
                             professor_rank: rank,
                             professor_name: name,
@@ -319,4 +303,48 @@ function deleteProfessorFiles (idx) {
             }
         })
     }))
+}
+
+const processProfessorContents = (prevContents) => {
+    let results = [];
+
+    let rankRef = [];
+
+    prevContents.forEach(element => {
+        let rankTemp = element['professor_rank'];
+        if (!rankRef.includes(rankTemp)) {
+            rankRef.push(rankTemp)
+        }
+    })
+
+
+    rankRef.sort((x, y) => {
+        if (x > y) {return 1;}
+        if (x < y) {return -1;}
+        return 0;
+    })
+
+    for (let i = 0; i < rankRef.length; i++) {
+        let temp = prevContents.filter(element => element['professor_rank'] === rankRef[i]);
+        results.push({
+            rank: rankRef[i],
+            professors: []
+        })
+        for (let k = 0; k < temp.length; k++) {
+            results[i].professors.push({
+                idx: temp[k]['idx'],
+                name: temp[k]['professor_name'],
+                email: temp[k]['professor_email'],
+                phone: temp[k]['professor_phone'],
+                degree: temp[k]['professor_degree'],
+                education: temp[k]['professor_education'],
+                experience: temp[k]['professor_experience'],
+                affiliation: temp[k]['professor_affiliation'],
+                imgSrc: `${address.ip}:${address.port}/${address.path}/${results[i]['professor_image']}`,
+                isConfirmOpen: false,
+            })
+        }
+    }
+
+    return results
 }
