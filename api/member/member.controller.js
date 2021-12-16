@@ -134,6 +134,7 @@ exports.updateMember = (req, res, next) => {
     const {rank, name, email, phone, researchArea, id, idx} = req.body;
     let accessToken = req.headers['x-access-token'];
     const file = req.file;
+    console.log(file)
 
     if (id && idx) {
         checkAdmin(id, accessToken).then(
@@ -146,9 +147,7 @@ exports.updateMember = (req, res, next) => {
                             member_email: email,
                             member_phone: phone,
                             member_research_area: researchArea,
-                            member_image: !file ? null : file.filename
                         }
-                        console.log(`update : ${file.filename}`)
                         const updateQuery = query.updateQuery('member', payload, {idx: idx})
                         connection.query(updateQuery, function (err, results) {
                             if (err) {
@@ -282,6 +281,7 @@ function deleteMemberFiles (idx) {
             }
             else if (results.length > 0) {
                 let path = `${appDir}/uploads/${results[0]['member_image']}`
+                console.log(`path: ${path}`)
                 try {
                     await access(path, constants.F_OK);
                     await fs.unlinkSync(path)
@@ -311,8 +311,8 @@ const processMemberContents = (prevContents) => {
 
 
     rankRef.sort((x, y) => {
-        if (x > y) {return 1;}
-        if (x < y) {return -1;}
+        if (x < y) {return 1;}
+        if (x > y) {return -1;}
         return 0;
     })
 

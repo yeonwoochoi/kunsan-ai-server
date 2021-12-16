@@ -155,7 +155,6 @@ exports.updateProfessor = (req, res, next) => {
                             professor_education: education,
                             professor_experience: experience,
                             professor_affiliation: affiliation,
-                            professor_image: !file ? null : file.filename
                         }
                         const updateQuery = query.updateQuery('professor', payload, {idx: idx})
                         connection.query(updateQuery, function (err, results) {
