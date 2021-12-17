@@ -339,7 +339,7 @@ const processProfessorContents = (prevContents) => {
                 education: temp[k]['professor_education'],
                 experience: temp[k]['professor_experience'],
                 affiliation: temp[k]['professor_affiliation'],
-                imgSrc: `${address.ip}:${address.port}/${address.path}/${results[i]['professor_image']}`,
+                imgSrc: `${address.ip}:${address.port}/${address.path}/${temp[k]['professor_image']}`,
                 isConfirmOpen: false,
             })
         }
