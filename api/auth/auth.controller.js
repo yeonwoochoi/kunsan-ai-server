@@ -1,7 +1,6 @@
 const mysql = require('mysql');
 const config = require('../../config/config');
 const connection = mysql.createConnection(config.SQL);
-let User = require('../../models/user/user');
 const crypto = require('crypto');
 const secret = config.KEY.secret;
 const jwt_secret = config.KEY.jwt_secret;
@@ -42,7 +41,7 @@ function setRefreshToken(user_id, user_role) {
           },
           jwt_secret,
           {
-              expiresIn: '1h',
+              expiresIn: '24h',
               issuer: 'Beagle',
               subject: 'refreshToken'
           },
@@ -163,8 +162,8 @@ exports.emailAuth = async (req, res, next) => {
                         'status': 200,
                         'msg': 'Successfully sending verification code by e-mail',
                         'data': {
-                            'id': User.user_id,
-                            'role': User.user_role,
+                            'id': email,
+                            'role': 'user',
                             'authNum': number,
                         }
                     })
@@ -204,8 +203,8 @@ exports.emailCheck = async (req, res, next) => {
                         'status': 200,
                         'msg': 'Successfully sending verification code by e-mail',
                         'data': {
-                            'id': User.user_id,
-                            'role': User.user_role,
+                            'id': email,
+                            'role': 'user',
                             'authNum': number,
                         }
                     })
@@ -244,15 +243,23 @@ exports.login = (req, res, next) => {
                         (accessToken) => {
                             setRefreshToken(user_id, user_role).then(
                                 (refreshToken) => {
-                                    res.status(200).json({
-                                        'status': 200,
-                                        'msg': 'Login success',
-                                        'data': {
-                                            'id': user_id,
-                                            'role': user_role,
-                                            'accessToken': accessToken,
+                                    checkTempPwdUser(user_id).then(
+                                        isTempUser => {
+                                            res.status(200).json({
+                                                'status': 200,
+                                                'msg': 'Login success',
+                                                'data': {
+                                                    'id': user_id,
+                                                    'role': user_role,
+                                                    'accessToken': accessToken,
+                                                    'isTempUser': isTempUser
+                                                }
+                                            });
+                                        },
+                                        err => {
+                                            next(ApiError.badRequest(err));
                                         }
-                                    });
+                                    )
                                 },
                                 (err) => {
                                     console.log('Login failure during setting refresh token');
@@ -461,4 +468,34 @@ exports.checkAdmin = (id, accessToken) => {
             }
         )
     })
+}
+
+exports.checkTempUser = (email) => {
+    return checkTempPwdUser(email)
+}
+
+function checkTempPwdUser(email) {
+    return new Promise(((resolve, reject) => {
+        const checkTempUserQuery = query.selectQuery('user', ['user_reset'], {'user_id': email})
+        connection.query(checkTempUserQuery, function (error, results) {
+            if (error) {
+                console.log(`Error occurred during reset password : ${error}`);
+                reject('There is a problem with the server. Please try again in a few minutes.')
+            }
+            else if (results.length > 0) {
+                const isTempUser = results[0]['user_reset'];
+                if (isTempUser === 1) {
+                    resolve(true)
+                }
+                else {
+                    console.log('This user does not have a temporary password.')
+                    resolve(false)
+                }
+            }
+            else {
+                console.log('This email is not registered')
+                reject('This email is not registered')
+            }
+        })
+    }))
 }
