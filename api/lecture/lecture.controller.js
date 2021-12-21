@@ -11,7 +11,7 @@ const appDir = dirname(require.main.filename);
 const address = require('../../config/address').IP;
 
 exports.create = (req, res, next) => {
-    console.log('create board content called')
+    console.log('create lecture content called')
     const { title, content, id } = req.body;
     const files = req.files;
     const importance = (req.body.importance === 'true') ? 1 : 0;
@@ -26,33 +26,33 @@ exports.create = (req, res, next) => {
             else if (check_result.length > 0) {
                 const isUser = check_result[0]['user_role'] === 'user'
                 let payload = {
-                    'board_title': title,
-                    'board_content': JSON.stringify(content),
-                    'board_importance': importance,
+                    'lecture_title': title,
+                    'lecture_content': JSON.stringify(content),
+                    'lecture_importance': importance,
                     'user_id': id,
                 }
                 if (isUser && importance) {
                     console.log("User cannot register notice")
-                    payload.board_importance = 0;
+                    payload.lecture_importance = 0;
                 }
-                const registerBoardContentQuery = query.insertQuery('board', payload);
-                connection.query(registerBoardContentQuery, function (error, results) {
+                const registerLectureContentQuery = query.insertQuery('lecture', payload);
+                connection.query(registerLectureContentQuery, function (error, results) {
                     if (error) {
-                        console.log('Register failure during input board data into db');
+                        console.log('Register failure during input lecture data into db');
                         next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                         return;
                     }
                     if (results.affectedRows === 1) {
                         if (files.length > 0) {
-                            const getBoardIdQuery = query.selectQuery('board', ['idx'], payload)
-                            connection.query(getBoardIdQuery, function (error, board_id_results) {
+                            const getLectureIdQuery = query.selectQuery('lecture', ['idx'], payload)
+                            connection.query(getLectureIdQuery, function (error, lecture_id_results) {
                                 if (error) {
-                                    console.log('Register failure during get board index into db');
+                                    console.log('Register failure during get lecture index into db');
                                     next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                                     return;
                                 }
-                                const last_insert_board_id = board_id_results[0]['idx'];
-                                insertBoardFiles(last_insert_board_id, files).then(
+                                const last_insert_lecture_id = lecture_id_results[0]['idx'];
+                                insertLectureFiles(last_insert_lecture_id, files).then(
                                     msg => {
                                         res.status(200).json({
                                             'status': 200,
@@ -68,12 +68,12 @@ exports.create = (req, res, next) => {
                         else {
                             res.status(200).json({
                                 'status': 200,
-                                'msg': 'Register board content success'
+                                'msg': 'Register lecture content success'
                             });
                         }
                     }
                     else {
-                        console.log('Register board content failed')
+                        console.log('Register lecture content failed')
                         next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                     }
                 })
@@ -89,28 +89,28 @@ exports.create = (req, res, next) => {
 }
 
 exports.readAll = (req, res, next) => {
-    const selectAllQuery = 'SELECT * FROM board'
+    const selectAllQuery = 'SELECT * FROM lecture'
     connection.query(selectAllQuery, async function (error, results) {
         if (error) {
-            console.log('Error occurred during reading all board data')
+            console.log('Error occurred during reading all lecture data')
             next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
             return;
         }
         if (results.length > 0) {
-            let totalResults = await mergeBoardContents(results);
+            let totalResults = await mergeLectureContents(results);
             if (!totalResults) {
-                console.log('An error occurred in the process of merging board contents')
+                console.log('An error occurred in the process of merging lecture contents')
                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
             }
             else {
                 res.status(200).json({
-                    msg: 'Read all board data success',
+                    msg: 'Read all lecture data success',
                     status: 200,
                     data: totalResults
                 })
             }
         } else {
-            console.log('No board data')
+            console.log('No lecture data')
             res.status(200).json({
                 msg: 'There is no data',
                 status: 200,
@@ -122,27 +122,27 @@ exports.readAll = (req, res, next) => {
 
 exports.readByIndex = (req, res, next) => {
     const {idx} = req.params;
-    const selectAllQuery = `SELECT * FROM board where idx = ${idx}`
+    const selectAllQuery = `SELECT * FROM lecture where idx = ${idx}`
     connection.query(selectAllQuery, async function (error, results) {
         if (error) {
-            console.log('Error occurred during reading board data')
+            console.log('Error occurred during reading lecture data')
             next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
             return;
         }
         if (results.length > 0) {
             let result = {
                 idx: results[0].idx,
-                title: results[0].board_title,
-                content: results[0].board_content,
-                created_at: results[0]['board_created_at'].toISOString().split("T")[0],
-                view_count: results[0]['board_view_count'],
-                importance: results[0].board_importance,
+                title: results[0].lecture_title,
+                content: results[0].lecture_content,
+                created_at: results[0]['lecture_created_at'].toISOString().split("T")[0],
+                view_count: results[0]['lecture_view_count'],
+                importance: results[0].lecture_importance,
                 author: results[0].user_id,
                 comments: [],
                 attach: []
             };
             try {
-                let asyncResults = await Promise.all([getUserName(result.author), getBoardComments(result.idx), getBoardFiles(result.idx)]);
+                let asyncResults = await Promise.all([getUserName(result.author), getLectureComments(result.idx), getLectureFiles(result.idx)]);
                 result.author = asyncResults[0];
                 result.comments = asyncResults[1];
                 result.attach = asyncResults[2];
@@ -150,13 +150,13 @@ exports.readByIndex = (req, res, next) => {
                 next(ApiError.badRequest(e));
             }
             res.status(200).json({
-                msg: 'Read board data success',
+                msg: 'Read lecture data success',
                 status: 200,
                 data: result
             })
         }
         else {
-            console.log('No board data')
+            console.log('No lecture data')
             res.status(200).json({
                 msg: 'There is no data',
                 status: 200,
@@ -168,21 +168,21 @@ exports.readByIndex = (req, res, next) => {
 
 exports.addViewCount = (req, res, next) => {
     const {idx} = req.params;
-    const updateQuery = `UPDATE board SET board_view_count = board_view_count + 1 WHERE idx = ${idx}`
+    const updateQuery = `UPDATE lecture SET lecture_view_count = lecture_view_count + 1 WHERE idx = ${idx}`
 
     connection.query(updateQuery, function (error, results) {
         if (error) {
-            console.log('Error occurred during updating board view count')
+            console.log('Error occurred during updating lecture view count')
             next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
             return;
         }
         if (results.affectedRows > 0) {
             res.status(200).json({
-                msg: 'Updating board view count success',
+                msg: 'Updating lecture view count success',
                 status: 200,
             })
         } else {
-            next(ApiError.badRequest('There is no board content corresponding to the index in request body. Please check again.'));
+            next(ApiError.badRequest('There is no lecture content corresponding to the index in request body. Please check again.'));
         }
     })
 }
@@ -199,7 +199,7 @@ exports.getTotalPage = async (req, res, next) => {
             (conditionQuery) => {
                 if (conditionQuery.length === 0) {
                     res.status(200).json({
-                        msg: `No board results found`,
+                        msg: `No lecture results found`,
                         status: 200,
                         data: {
                             totalPage: 1,
@@ -207,10 +207,10 @@ exports.getTotalPage = async (req, res, next) => {
                         }
                     })
                 } else {
-                    let query = `SELECT COUNT(*) as count FROM board WHERE ${conditionQuery}`
+                    let query = `SELECT COUNT(*) as count FROM lecture WHERE ${conditionQuery}`
                     connection.query(query, function (error, results) {
                         if (error) {
-                            console.log('Error occurred during getting board total count')
+                            console.log('Error occurred during getting lecture total count')
                             next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                             return;
                         }
@@ -237,10 +237,10 @@ exports.getTotalPage = async (req, res, next) => {
             })
     }
     else {
-        const query = 'SELECT COUNT(*) as count FROM board'
+        const query = 'SELECT COUNT(*) as count FROM lecture'
         connection.query(query, function (error, results) {
             if (error) {
-                console.log('Error occurred during getting board total count')
+                console.log('Error occurred during getting lecture total count')
                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                 return;
             }
@@ -263,7 +263,7 @@ exports.getTotalPage = async (req, res, next) => {
     }
 }
 
-exports.getBoardContentInPage = async (req, res, next) => {
+exports.getLectureContentInPage = async (req, res, next) => {
     let {currentPage, itemPerPage, orderBy, searchBy, keyword} = req.body;
 
     // Set default value
@@ -287,10 +287,10 @@ exports.getBoardContentInPage = async (req, res, next) => {
             sortBy = 'idx';
             break;
         case 'created_at':
-            sortBy = 'board_created_at';
+            sortBy = 'lecture_created_at';
             break;
         case 'view_count':
-            sortBy = 'board_view_count';
+            sortBy = 'lecture_view_count';
             break;
         default:
             sortBy = 'idx';
@@ -300,13 +300,13 @@ exports.getBoardContentInPage = async (req, res, next) => {
     let searchColumns;
     switch (searchBy) {
         case 'total':
-            searchColumns = 'board_title, board_content, user_id';
+            searchColumns = 'lecture_title, lecture_content, user_id';
             break;
         case 'title':
-            searchColumns = 'board_title';
+            searchColumns = 'lecture_title';
             break;
         case 'content':
-            searchColumns = 'board_content';
+            searchColumns = 'lecture_content';
             break;
         default:
             searchColumns = 'idx';
@@ -314,29 +314,29 @@ exports.getBoardContentInPage = async (req, res, next) => {
     }
 
     if (!keyword) {
-        const query = `SELECT * FROM board ORDER BY FIELD(board_importance, 1) DESC, ${sortBy} DESC LIMIT ${(currentPage-1) * itemPerPage}, ${itemPerPage}`;
+        const query = `SELECT * FROM lecture ORDER BY FIELD(lecture_importance, 1) DESC, ${sortBy} DESC LIMIT ${(currentPage-1) * itemPerPage}, ${itemPerPage}`;
         connection.query(query, async function (error, results) {
             if (error) {
-                console.log('Error occurred during getting board content in page ' + currentPage)
+                console.log('Error occurred during getting lecture content in page ' + currentPage)
                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                 return;
             }
             if (results.length > 0) {
-                let totalResults = await mergeBoardContents(results, currentPage, itemPerPage);
+                let totalResults = await mergeLectureContents(results, currentPage, itemPerPage);
                 if (!totalResults) {
-                    console.log('An error occurred in the process of merging board contents')
+                    console.log('An error occurred in the process of merging lecture contents')
                     next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                 }
                 else {
                     res.status(200).json({
-                        msg: `Read board content in page ${currentPage} success`,
+                        msg: `Read lecture content in page ${currentPage} success`,
                         status: 200,
                         data: totalResults
                     })
                 }
             }
             else {
-                console.log('No seminar data')
+                console.log('No lecture data')
                 res.status(200).json({
                     msg: 'There is no data',
                     status: 200,
@@ -350,36 +350,36 @@ exports.getBoardContentInPage = async (req, res, next) => {
             (conditionQuery) => {
                 if (conditionQuery.length === 0) {
                     res.status(200).json({
-                        msg: `No board results found`,
+                        msg: `No lecture results found`,
                         status: 200,
                         data: []
                     })
                 }
                 else {
-                    let query = `SELECT * FROM board WHERE ${conditionQuery} ORDER BY FIELD(board_importance, 1) DESC, ${sortBy} DESC LIMIT ${(currentPage-1) * itemPerPage}, ${currentPage * itemPerPage}`
+                    let query = `SELECT * FROM lecture WHERE ${conditionQuery} ORDER BY FIELD(lecture_importance, 1) DESC, ${sortBy} DESC LIMIT ${(currentPage-1) * itemPerPage}, ${currentPage * itemPerPage}`
                     connection.query(query, async function (error, results) {
                         if (error) {
-                            console.log('Error occurred during searching board contents')
+                            console.log('Error occurred during searching lecture contents')
                             next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                             return;
                         }
                         if (results.length > 0) {
-                            let totalResults = await mergeBoardContents(results, currentPage, itemPerPage);
+                            let totalResults = await mergeLectureContents(results, currentPage, itemPerPage);
                             if (!totalResults) {
-                                console.log('An error occurred in the process of merging board contents')
+                                console.log('An error occurred in the process of merging lecture contents')
                                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                             }
                             else {
                                 res.status(200).json({
-                                    msg: `Read board content in page ${currentPage} success`,
+                                    msg: `Read lecture content in page ${currentPage} success`,
                                     status: 200,
                                     data: totalResults
                                 })
                             }
                         } else {
-                            console.log(`No board results found`)
+                            console.log(`No lecture results found`)
                             res.status(200).json({
-                                msg: `Read board content in page ${currentPage} success`,
+                                msg: `Read lecture content in page ${currentPage} success`,
                                 status: 200,
                                 data: []
                             })
@@ -388,7 +388,7 @@ exports.getBoardContentInPage = async (req, res, next) => {
                 }
             },
             () => {
-                console.log('Error occurred during searching user name before searching board contents')
+                console.log('Error occurred during searching user name before searching lecture contents')
                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
             }
         );
@@ -396,7 +396,7 @@ exports.getBoardContentInPage = async (req, res, next) => {
 }
 
 exports.update = (req, res, next) => {
-    console.log('update board content called')
+    console.log('update lecture content called')
     const { title, content, id, idx } = req.body;
     const files = req.files;
     const importance = (req.body.importance === 'true') ? 1 : 0;
@@ -404,7 +404,7 @@ exports.update = (req, res, next) => {
     console.dir(req.files)
 
     if (title && content && id) {
-        const checkUserQuery = `select (select user_role from user where user_id = "${id}") = 'admin' or (select user_id from board where idx = "${idx}") = "${id}" as correct;`
+        const checkUserQuery = `select (select user_role from user where user_id = "${id}") = 'admin' or (select user_id from lecture where idx = "${idx}") = "${id}" as correct;`
         connection.query(checkUserQuery, function (error, check_result) {
             if (error) {
                 console.log('Update content failure during check user id into db');
@@ -413,14 +413,14 @@ exports.update = (req, res, next) => {
             else if (check_result.length > 0) {
                 if (check_result[0]['correct'] === 1) {
                     const payload = {
-                        board_title: title,
-                        board_content: content,
-                        board_importance: importance
+                        lecture_title: title,
+                        lecture_content: content,
+                        lecture_importance: importance
                     };
-                    const updateQuery = query.updateQuery('board', payload, {idx: idx, user_id: id})
+                    const updateQuery = query.updateQuery('lecture', payload, {idx: idx, user_id: id})
                     connection.query(updateQuery, function (err, results) {
                         if (err) {
-                            console.log('Error occurred during updating board content')
+                            console.log('Error occurred during updating lecture content')
                             next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                             return;
                         }
@@ -428,9 +428,9 @@ exports.update = (req, res, next) => {
                         // affectedRows : where절로 검색된 rows 수
                         // changedRows : 실제로 update된 rows 수
                         if (results.affectedRows > 0) {
-                            deleteFiles(idx, 'board_files').then(
+                            deleteFiles(idx, 'lecture_files').then(
                                 () => {
-                                    updateBoardFiles(idx, files, 'board_files').then(
+                                    updateLectureFiles(idx, files, 'lecture_files').then(
                                         msg => {
                                             res.status(200).json({
                                                 status: 200,
@@ -473,12 +473,12 @@ exports.delete = (req, res, next) => {
     const {idx, id, table} = req.body;
     let accessToken = req.headers['x-access-token'];
     if (id && idx && table) {
-        checkBoardAuthor(id, idx, accessToken, table).then(
+        checkLectureAuthor(id, idx, accessToken, table).then(
             (isSame) => {
                 if (isSame) {
-                    deleteFiles(idx, 'board_files').then(
+                    deleteFiles(idx, 'lecture_files').then(
                         () => {
-                            deleteBoardData(idx, table).then(
+                            deleteLectureData(idx, table).then(
                                 msg => {
                                     res.status(200).json({
                                         status: 200,
@@ -500,7 +500,7 @@ exports.delete = (req, res, next) => {
                 }
             },
             () => {
-                console.log('Error occurred during checking board author by idx before register comment')
+                console.log('Error occurred during checking lecture author by idx before register comment')
                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
             }
         )
@@ -510,15 +510,15 @@ exports.delete = (req, res, next) => {
     }
 }
 
-function deleteBoardData (idx, table) {
+function deleteLectureData (idx, table) {
     const deleteQuery = `DELETE FROM ${table} WHERE idx = ${idx}`;
     return new Promise(((resolve, reject) => {
         connection.query(deleteQuery, async function (err, results) {
             if (err) {
-                reject('Error occurred during deleting board')
+                reject('Error occurred during deleting lecture')
             }
             else if (results.affectedRows > 0) {
-                resolve('Board data deletion success')
+                resolve('lecture data deletion success')
             }
             else {
                 reject('That data does not exist already')
@@ -528,15 +528,15 @@ function deleteBoardData (idx, table) {
 }
 
 function deleteFiles (idx, table) {
-    const selectQuery = query.selectQuery(table, ['board_files_link'], {board_id: idx})
+    const selectQuery = query.selectQuery(table, ['lecture_files_link'], {lecture_id: idx})
     return new Promise(((resolve, reject) => {
         connection.query(selectQuery, async function (err, results) {
             if (err) {
-                reject('Error occurred during reading all board files for deleting')
+                reject('Error occurred during reading all lecture files for deleting')
             }
             else if (results.length > 0) {
                 for (let i = 0; i < results.length; i++) {
-                    let path = `${appDir}/uploads/${results[i]['board_files_link']}`
+                    let path = `${appDir}/uploads/${results[i]['lecture_files_link']}`
                     try {
                         await access(path, constants.F_OK);
                         await fs.unlinkSync(path)
@@ -548,7 +548,7 @@ function deleteFiles (idx, table) {
             }
             else {
                 console.log('called')
-                resolve('There is nothing to be attached in this board content')
+                resolve('There is nothing to be attached in this lecture content')
             }
         })
     }))
@@ -558,18 +558,18 @@ exports.checkAuthor = (req, res, next) => {
     const {idx, id, table} = req.body;
     const accessToken = req.headers['x-access-token'];
     if (id && idx) {
-        checkBoardAuthor(id, idx, accessToken, table).then(
+        checkLectureAuthor(id, idx, accessToken, table).then(
             (isSame) => {
                 res.status(200).json({
                     status: 200,
-                    msg: 'Check board author success',
+                    msg: 'Check lecture author success',
                     data: {
                         isAuthor: isSame
                     }
                 })
             },
             () => {
-                console.log('Error occurred during checking board author by idx before register comment')
+                console.log('Error occurred during checking lecture author by idx before register comment')
                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
             }
         )
@@ -584,40 +584,40 @@ exports.addComment = (req, res, next) => {
     if (id && comment && idx) {
         getUserName(id).then(
             () => {
-                const checkBoardIdxQuery = query.selectAllQuery('board', {'idx': idx})
-                connection.query(checkBoardIdxQuery, async function (err, checkResults) {
+                const checkLectureIdxQuery = query.selectAllQuery('lecture', {'idx': idx})
+                connection.query(checkLectureIdxQuery, async function (err, checkResults) {
                     if (err){
-                        console.log('Error occurred during checking board idx before register comment')
+                        console.log('Error occurred during checking lecture idx before register comment')
                         next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                         return;
                     }
                     if (checkResults.length > 0) {
-                        const addCommentQuery = query.insertQuery('board_comment', {
-                            'board_id': idx,
-                            'board_comment_content': comment,
+                        const addCommentQuery = query.insertQuery('lecture_comment', {
+                            'lecture_id': idx,
+                            'lecture_comment_content': comment,
                             'user_id': id
                         })
                         connection.query(addCommentQuery, async function (err, results) {
                             if (err){
-                                console.log('Error occurred during checking board idx before register comment')
+                                console.log('Error occurred during checking lecture idx before register comment')
                                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                                 return;
                             }
                             if (results.affectedRows === 1) {
-                                console.log('Register board comment success')
+                                console.log('Register lecture comment success')
                                 res.status(200).json({
                                     status: 200,
-                                    msg: 'Register board comment success'
+                                    msg: 'Register lecture comment success'
                                 })
                             }
                             else {
-                                console.log('Register board comment failed')
+                                console.log('Register lecture comment failed')
                                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                             }
                         })
                     }
                     else {
-                        next(ApiError.badRequest('Board idx is not registered. Please try again'));
+                        next(ApiError.badRequest('lecture idx is not registered. Please try again'));
                     }
                 })
             },
@@ -632,23 +632,23 @@ exports.addComment = (req, res, next) => {
     }
 }
 
-async function mergeBoardContents(results, page = 1, itemsPerPage = 10) {
+async function mergeLectureContents(results, page = 1, itemsPerPage = 10) {
     let totalResults = [];
     for (let i = 0; i < results.length; i++) {
         let row = {
             no: i+1+((page-1) * itemsPerPage),
             idx: results[i].idx,
-            title: results[i].board_title,
-            content: results[i].board_content,
-            created_at: results[i]['board_created_at'].toISOString().split("T")[0],
-            view_count: results[i]['board_view_count'],
-            importance: results[i].board_importance,
+            title: results[i].lecture_title,
+            content: results[i].lecture_content,
+            created_at: results[i]['lecture_created_at'].toISOString().split("T")[0],
+            view_count: results[i]['lecture_view_count'],
+            importance: results[i].lecture_importance,
             author: results[i].user_id,
             comments: [],
             attach: []
         };
         try {
-            let asyncResults = await Promise.all([getUserName(row.author), getBoardComments(row.idx), getBoardFiles(row.idx)]);
+            let asyncResults = await Promise.all([getUserName(row.author), getLectureComments(row.idx), getLectureFiles(row.idx)]);
             row.author = asyncResults[0];
             row.comments = asyncResults[1];
             row.attach = asyncResults[2];
@@ -660,11 +660,11 @@ async function mergeBoardContents(results, page = 1, itemsPerPage = 10) {
     return totalResults;
 }
 
-function checkBoardAuthor(user_id, board_id, token, table) {
+function checkLectureAuthor(user_id, lecture_id, token, table) {
     return new Promise((resolve, reject) => {
         checkLogin(user_id, token).then(
             () => {
-                const checkQuery = `select (select user_id from ${table} where idx = "${board_id}") = ("${user_id}") as is_same`
+                const checkQuery = `select (select user_id from ${table} where idx = "${lecture_id}") = ("${user_id}") as is_same`
                 connection.query(checkQuery, async function (error, results) {
                     if (error) {
                         reject('There is a problem with the server. Please try again in a few minutes.')
@@ -710,18 +710,18 @@ function getUserName(user_id) {
     }))
 }
 
-function getBoardComments(board_id, isLatestOrder = true) {
+function getLectureComments(lecture_id, isLatestOrder = true) {
     return new Promise(((resolve, reject) => {
-        const selectQuery = `select board_comment.board_comment_content, board_comment.board_comment_created_at, user.user_name from board_comment, user where board_id = ${board_id} and user.user_id = board_comment.user_id ORDER BY board_comment.board_comment_created_at ${isLatestOrder ? 'DESC' : 'ASC'}`;
+        const selectQuery = `select lecture_comment.lecture_comment_content, lecture_comment.lecture_comment_created_at, user.user_name from lecture_comment, user where lecture_id = ${lecture_id} and user.user_id = lecture_comment.user_id ORDER BY lecture_comment.lecture_comment_created_at ${isLatestOrder ? 'DESC' : 'ASC'}`;
         connection.query(selectQuery, async function (error, results) {
             if (error) {
                 reject('There is a problem with the server. Please try again in a few minutes.')
             }
             else if (results.length > 0) {
                 resolve(results.map(x => {
-                    let dateArr = x['board_comment_created_at'].toISOString().split("T");
+                    let dateArr = x['lecture_comment_created_at'].toISOString().split("T");
                     return {
-                        content: x['board_comment_content'],
+                        content: x['lecture_comment_content'],
                         created_at: `${dateArr[0]} ${dateArr[1].split(".")[0]}`,
                         author: x['user_name']
                     };
@@ -733,9 +733,9 @@ function getBoardComments(board_id, isLatestOrder = true) {
     }))
 }
 
-function getBoardFiles(board_id) {
+function getLectureFiles(lecture_id) {
     return new Promise(((resolve, reject) => {
-        const selectQuery = query.selectQuery('board_files', ['board_files_name', 'board_files_link'], {board_id: board_id});
+        const selectQuery = query.selectQuery('lecture_files', ['lecture_files_name', 'lecture_files_link'], {lecture_id: lecture_id});
         connection.query(selectQuery, async function (error, results) {
             if (error) {
                 reject('There is a problem with the server. Please try again in a few minutes.')
@@ -743,8 +743,8 @@ function getBoardFiles(board_id) {
             else if (results.length > 0) {
                 resolve(results.map(x => {
                     return {
-                        link: `${address.ip}:${address.port}/${address.path}/${x.board_files_link}`,
-                        name: x.board_files_name
+                        link: `${address.ip}:${address.port}/${address.path}/${x.lecture_files_link}`,
+                        name: x.lecture_files_name
                     }
                 }))
             } else {
@@ -760,7 +760,7 @@ async function setSearchConditions(searchBy, keyword) {
             const selectUserQuery = `SELECT user_id, user_name FROM user WHERE user_name REGEXP "${keyword}"`;
             connection.query(selectUserQuery, async function (err, userInfos) {
                 if (err) {
-                    console.log('Error occurred during searching user name before searching board contents')
+                    console.log('Error occurred during searching user name before searching lecture contents')
                     reject();
                 }
                 else {
@@ -774,14 +774,14 @@ async function setSearchConditions(searchBy, keyword) {
                             }
                         }
                         if (searchBy === 'total') {
-                            conditionQuery += ` or board_title REGEXP "${keyword}" or board_content REGEXP "${keyword}" or user_id REGEXP "${keyword}"`
+                            conditionQuery += ` or lecture_title REGEXP "${keyword}" or lecture_content REGEXP "${keyword}" or user_id REGEXP "${keyword}"`
                         }
                     }
                     else if (searchBy === 'total') {
-                        conditionQuery += `board_title REGEXP "${keyword}" or board_content REGEXP "${keyword}" or user_id REGEXP "${keyword}"`
+                        conditionQuery += `lecture_title REGEXP "${keyword}" or lecture_content REGEXP "${keyword}" or user_id REGEXP "${keyword}"`
                     }
                     else {
-                        console.log(`No board results found`)
+                        console.log(`No lecture results found`)
                         resolve('')
                     }
                     resolve(conditionQuery)
@@ -789,24 +789,24 @@ async function setSearchConditions(searchBy, keyword) {
             })
         }
         else if (searchBy === 'title'){
-            resolve(`board_title REGEXP "${keyword}"`)
+            resolve(`lecture_title REGEXP "${keyword}"`)
         }
         else if (searchBy === 'content') {
-            resolve(`board_content REGEXP "${keyword}"`)
+            resolve(`lecture_content REGEXP "${keyword}"`)
         }
     }))
 }
 
-function updateBoardFiles(idx, files, table) {
+function updateLectureFiles(idx, files, table) {
     return new Promise(((resolve, reject) => {
-        const deleteQuery = `DELETE FROM ${table} WHERE board_id = "${idx}"`;
+        const deleteQuery = `DELETE FROM ${table} WHERE lecture_id = "${idx}"`;
         connection.query(deleteQuery, async function (err) {
             if (err) {
                 reject(err)
             }
             else {
                 if (files.length > 0) {
-                    insertBoardFiles(idx, files).then(
+                    insertLectureFiles(idx, files).then(
                         msg => {
                             resolve(msg)
                         },
@@ -823,25 +823,25 @@ function updateBoardFiles(idx, files, table) {
     }))
 }
 
-function insertBoardFiles(board_id, files){
+function insertLectureFiles(lecture_id, files){
     return new Promise(((resolve, reject) => {
-        let registerAttachQuery = 'INSERT INTO board_files (board_files_link, board_files_name, board_id) VALUES ';
+        let registerAttachQuery = 'INSERT INTO lecture_files (lecture_files_link, lecture_files_name, lecture_id) VALUES ';
         for (let i = 0; i < files.length; i++) {
-            registerAttachQuery += `( "${files[i].filename}", "${files[i].originalname}", "${board_id}" )`
+            registerAttachQuery += `( "${files[i].filename}", "${files[i].originalname}", "${lecture_id}" )`
             if (i < files.length - 1) {
                 registerAttachQuery += ', '
             }
         }
         connection.query(registerAttachQuery, function (error, results) {
             if (error) {
-                console.log('Register failure during input board file data into db');
+                console.log('Register failure during input lecture file data into db');
                 reject('There is a problem with the server. Please try again in a few minutes.');
             }
             else if (results.affectedRows > 0) {
-                resolve('Register board content success')
+                resolve('Register lecture content success')
             }
             else {
-                console.log('Register board files failed')
+                console.log('Register lecture files failed')
                 reject('There is a problem with the server. Please try again in a few minutes.')
             }
         })

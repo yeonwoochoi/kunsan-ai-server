@@ -353,7 +353,12 @@ exports.getNewsContentInPage = async (req, res, next) => {
                 }
             }
             else {
-                next(ApiError.badRequest(`Content does not exist on "page ${currentPage}". Please search again.`));
+                console.log('No news data')
+                res.status(200).json({
+                    msg: 'There is no data',
+                    status: 200,
+                    data: []
+                })
             }
         })
     }
