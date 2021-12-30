@@ -10,7 +10,9 @@ router.get('/addViewCount/:idx', controller.addViewCount)
 router.post('/getTotalPage', controller.getTotalPage)
 router.post('/addComment', controller.addComment)
 router.post('/checkAuthor', controller.checkAuthor)
+router.post('/checkCommentAuthor', controller.checkCommentAuthor)
 router.post('/delete', controller.delete)
+router.post('/delete/comment', controller.deleteComment)
 router.post('/update', upload.array("files"), controller.update)
 
 module.exports = router;

@@ -510,6 +510,31 @@ exports.delete = (req, res, next) => {
     }
 }
 
+exports.deleteComment = (req, res, next) => {
+    const {idx} = req.body;
+    if (idx) {
+        const deleteQuery = `DELETE FROM board_comment WHERE idx = ${idx}`
+        connection.query(deleteQuery, function (err, results) {
+            if (err){
+                console.log('Error occurred during deleting seminar comment')
+                next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+            }
+            else if (results.affectedRows > 0) {
+                res.status(200).json({
+                    status: 200,
+                    msg: 'Delete seminar comment success'
+                })
+            }
+            else {
+                next(ApiError.badRequest('That data does not exist already'))
+            }
+        })
+    }
+    else {
+        next(ApiError.badRequest('Please input all data'))
+    }
+}
+
 function deleteBoardData (idx, table) {
     const deleteQuery = `DELETE FROM ${table} WHERE idx = ${idx}`;
     return new Promise(((resolve, reject) => {
@@ -571,6 +596,51 @@ exports.checkAuthor = (req, res, next) => {
             () => {
                 console.log('Error occurred during checking board author by idx before register comment')
                 next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+            }
+        )
+    }
+    else {
+        next(ApiError.badRequest('Please input all data'))
+    }
+}
+
+exports.checkCommentAuthor = (req, res, next) => {
+    const {id, idx} = req.body;
+    const accessToken = req.headers['x-access-token'];
+    if (id && idx) {
+        checkLogin(id, accessToken).then(
+            () => {
+                const checkQuery = `SELECT user_id FROM board_comment WHERE idx = "${idx}"`
+                connection.query(checkQuery, function (err, results) {
+                    if (err){
+                        console.log('Error occurred during checking board idx before register comment')
+                        next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+                        return;
+                    }
+                    if (results.length > 0) {
+                        console.log('check board comment author success')
+                        res.status(200).json({
+                            status: 200,
+                            msg: 'check board comment author success',
+                            data: {
+                                isAuthor: results[0]['user_id'] === id
+                            }
+                        })
+                    }
+                    else {
+                        res.status(200).json({
+                            status: 200,
+                            msg: 'check board comment author success',
+                            data: {
+                                isAuthor: false
+                            }
+                        })
+                    }
+                })
+            },
+            () => {
+                console.log('Error occurred during check login for checking comment author')
+                next(ApiError.badRequest('Check board comment author failure'))
             }
         )
     }
@@ -712,7 +782,7 @@ function getUserName(user_id) {
 
 function getBoardComments(board_id, isLatestOrder = true) {
     return new Promise(((resolve, reject) => {
-        const selectQuery = `select board_comment.board_comment_content, board_comment.board_comment_created_at, user.user_name from board_comment, user where board_id = ${board_id} and user.user_id = board_comment.user_id ORDER BY board_comment.board_comment_created_at ${isLatestOrder ? 'DESC' : 'ASC'}`;
+        const selectQuery = `select board_comment.idx, board_comment.board_comment_content, board_comment.board_comment_created_at, user.user_name from board_comment, user where board_id = ${board_id} and user.user_id = board_comment.user_id ORDER BY board_comment.board_comment_created_at ${isLatestOrder ? 'DESC' : 'ASC'}`;
         connection.query(selectQuery, async function (error, results) {
             if (error) {
                 reject('There is a problem with the server. Please try again in a few minutes.')
@@ -721,6 +791,7 @@ function getBoardComments(board_id, isLatestOrder = true) {
                 resolve(results.map(x => {
                     let dateArr = x['board_comment_created_at'].toISOString().split("T");
                     return {
+                        idx: x['idx'],
                         content: x['board_comment_content'],
                         created_at: `${dateArr[0]} ${dateArr[1].split(".")[0]}`,
                         author: x['user_name']
