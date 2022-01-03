@@ -157,12 +157,38 @@ exports.createLecture = (req, res, next) => {
     )
 }
 
-exports.readByIndex = (req, res, next) => {
+exports.readLecture = (req, res, next) => {
+    const {year, semester, name} = req.body;
+    const selectQuery = query.selectQuery('lecture', ['idx'], {
+        lecture_year: year,
+        lecture_semester: semester,
+        lecture_name: name
+    })
+    connection.query(selectQuery, function (err, results) {
+        if (err) {
+            console.log('Error occurred during reading lecture data')
+            next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+            return;
+        }
+        if (results.length > 0) {
+            res.status(200).json({
+                msg: 'Read lecture index success',
+                status: 200,
+                data: results[0]['idx']
+            })
+        }
+        else {
+            next(ApiError.badRequest('There is no result'));
+        }
+    })
+}
+
+exports.readBoardContentByIndex = (req, res, next) => {
     const {idx} = req.params;
     const selectAllQuery = `SELECT * FROM lecture_board where idx = ${idx}`
     connection.query(selectAllQuery, async function (error, results) {
         if (error) {
-            console.log('Error occurred during reading lecture data')
+            console.log('Error occurred during reading lecture board data')
             next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
             return;
         }
@@ -446,6 +472,54 @@ exports.getLectureContentInPage = async (req, res, next) => {
 }
 
 exports.update = (req, res, next) => {
+    console.log('update lecture called')
+    const {year, semester, name, id, idx} = req.body;
+    let accessToken = req.headers['x-access-token'];
+
+    checkAdmin(id, accessToken).then(
+        isAdmin => {
+            if (isAdmin) {
+                if (year && semester && name && idx) {
+                    const payload = {
+                        lecture_year: year,
+                        lecture_semester: semester,
+                        lecture_name: name,
+                    };
+                    const updateQuery = query.updateQuery('lecture', payload, {idx: idx})
+                    connection.query(updateQuery, function (err, results) {
+                        if (err) {
+                            console.log('Error occurred during updating lecture')
+                            next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+                            return;
+                        }
+                        if (results.affectedRows > 0) {
+                            res.status(200).json({
+                                status: 200,
+                                msg: 'update lecture success'
+                            })
+                        }
+                        else {
+                            console.log('There is nothing to update')
+                            next(ApiError.badRequest('There is nothing to update'))
+                        }
+                    })
+                }
+                else {
+                    next(ApiError.badRequest('Please fill in all the values'));
+                }
+            }
+            else {
+                next(ApiError.badRequest('No control over updating lecture'))
+            }
+        },
+        () => {
+            console.log('Error occurred during checking admin before updating lecture')
+            next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+        }
+    )
+}
+
+exports.updateBoard = (req, res, next) => {
     console.log('update lecture board content called')
     const { title, content, id, idx } = req.body;
     const files = req.files;
@@ -514,62 +588,105 @@ exports.update = (req, res, next) => {
 
 exports.delete = (req, res, next) => {
     const {year, semester, name, id} = req.body;
-    const table = 'lecture';
     let accessToken = req.headers['x-access-token'];
     const selectQuery= query.selectQuery('lecture', ['idx'], {
         lecture_year: year,
         lecture_semester: semester,
         lecture_name: name
     })
-    connection.query(selectQuery, function (err, results) {
-        if (err) {
-            console.log('Error occurred during reading lecture idx')
-            next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
-            return;
-        }
-        if (results.length > 0) {
-            const idx = results[0]['idx'];
-            if (id && year && semester && name && table) {
-                checkAdmin(id, accessToken).then(
-                    (isAdmin) => {
-                        if (isAdmin) {
-                            deleteFiles(idx, 'lecture_files').then(
-                                () => {
-                                    deleteLectureData(idx, table).then(
-                                        msg => {
+    if (id && year && semester && name) {
+        checkAdmin(id, accessToken).then(
+            (isAdmin) => {
+                if (isAdmin) {
+                    connection.query(selectQuery, function (err, results) {
+                        if (err) {
+                            console.log('Error occurred during reading lecture idx')
+                            next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+                            return;
+                        }
+                        if (results.length > 0) {
+                            const lecture_idx = results[0]['idx'];
+                            const selectLectureBoardIdx = query.selectQuery('lecture_board', ['idx'], {
+                                lecture_id: lecture_idx
+                            });
+                            connection.query(selectLectureBoardIdx, async function (err, boardIdxResults) {
+                                if (err) {
+                                    console.log('Error occurred during reading lecture board idx')
+                                    next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+                                    return;
+                                }
+                                if (boardIdxResults.length > 0) {
+                                    let isSuccess = true;
+                                    for (let i = 0; i < boardIdxResults.length; i++) {
+                                        const lecture_board_idx = boardIdxResults[i]['idx']
+                                        await deleteFiles(lecture_board_idx, 'lecture_files').then(
+                                            () => {
+                                                deleteLectureData(lecture_board_idx, 'lecture_board').then(
+                                                    msg => { },
+                                                    err => {
+                                                        isSuccess = false
+                                                        console.log(err)
+                                                    }
+                                                )
+                                            },
+                                            err => {
+                                                isSuccess = false
+                                                console.log(err)
+                                            }
+                                        )
+                                    }
+                                    if (isSuccess) {
+                                        deleteLectureData(lecture_idx, 'lecture').then(
+                                            () => {
+                                                res.status(200).json({
+                                                    status: 200,
+                                                    msg: `Delete lecture success`
+                                                })
+                                            },
+                                            () => {
+                                                next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+                                            }
+                                        )
+                                    }
+                                    else {
+                                        next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
+                                    }
+                                }
+                                else {
+                                    console.log('There are no posts registered in the lecture')
+                                    deleteLectureData(lecture_idx, 'lecture').then(
+                                        () => {
                                             res.status(200).json({
                                                 status: 200,
-                                                msg: msg
+                                                msg: 'There are no posts registered in the lecture'
                                             })
                                         },
-                                        err => {
-                                            next(ApiError.badRequest(err))
+                                        (err) => {
+                                            next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
                                         }
                                     )
-                                },
-                                err => {
-                                    next(ApiError.badRequest(err))
                                 }
-                            )
+                            })
                         }
                         else {
-                            next(ApiError.badRequest('No control over deletion'))
+                            console.log('There are no lectures already registered')
+                            next(ApiError.badRequest('There are no lectures already registered'));
                         }
-                    },
-                    () => {
-                        console.log('Error occurred during checking lecture author by idx before remove lecture')
-                        next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
-                    }
-                )
+                    })
+                }
+                else {
+                    next(ApiError.badRequest('No control over deletion'))
+                }
+            },
+            () => {
+                console.log('Error occurred during checking admin idx before remove lecture')
+                next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
             }
-            else {
-                next(ApiError.badRequest('Please input all data'))
-            }
-        }
-        else {
-            next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
-        }
-    })
+        )
+    }
+    else {
+        next(ApiError.badRequest('Please input all data'))
+    }
 }
 
 exports.deleteBoard = (req, res, next) => {
