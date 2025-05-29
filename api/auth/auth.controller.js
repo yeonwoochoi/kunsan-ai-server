@@ -1,6 +1,4 @@
-const mysql = require('mysql');
 const config = require('../../config/config');
-const connection = mysql.createConnection(config.SQL);
 const crypto = require('crypto');
 const secret = config.KEY.secret;
 const jwt_secret = config.KEY.jwt_secret;
@@ -9,7 +7,8 @@ const {transporter} = require("../../config/email");
 const query = require("../../config/query");
 const ApiError = require("../error/api-error");
 const utils = require("../../util/utils");
-
+const getConnection = require('../../model/db').getConnection
+const handleConnectionError = require('../../model/db').handleConnectionError;
 
 function createAccessToken (user_id, user_role) {
     return new Promise((resolve, reject) => {
@@ -20,7 +19,7 @@ function createAccessToken (user_id, user_role) {
             },
             jwt_secret,
             {
-                expiresIn: '1m',
+                expiresIn: '60m',
                 issuer: 'Beagle',
                 subject: 'accessToken'
             },
@@ -48,12 +47,20 @@ function setRefreshToken(user_id, user_role) {
           (err, refreshToken) => {
               if (err) reject(err)
               const updateRefreshTokenQuery = query.updateQuery('user', {'user_token': refreshToken}, {'user_id': user_id});
-              connection.query(updateRefreshTokenQuery, function (error, results) {
-                  if (error) {
-                      reject(error)
-                  }
-                  resolve(refreshToken)
-              })
+              try {
+                  getConnection(conn => {
+                      conn.query(updateRefreshTokenQuery, function (error, results) {
+                          if (error) {
+                              reject(error)
+                          }
+                          resolve(refreshToken)
+                      })
+                      conn.release();
+                  })
+              }
+              catch (err) {
+                  reject(err)
+              }
           }
       )
     })
@@ -64,68 +71,82 @@ function getRefreshToken(user_id) {
     let user_role = null;
     const selectTokenQuery = query.selectQuery('user', ['user_token', 'user_role'], {'user_id': user_id})
     return new Promise((resolve, reject) => {
-        connection.query(selectTokenQuery, function (error, results) {
-            if (error) {
-                console.log('Get refresh token from db failed')
-                reject({
-                    'status': 400,
-                    'msg': 'Get refresh token from db failed'
-                })
-            }
-            else if (results.length > 0) {
-                refreshToken = results[0].user_token;
-                user_role = results[0].user_role;
-                const checkToken = new Promise(((resolve, reject) => {
-                    jwt.verify(refreshToken, jwt_secret, function (err, decoded) {
-                        if (err) {
-                            reject(err)
-                        }
-                        else {
-                            resolve(refreshToken)
-                        }
-                    })
-                }))
-                checkToken.then(
-                    (refreshToken) => {
-                        console.log('Refresh token is valid')
-                        createAccessToken(user_id, user_role).then(
-                            (accessToken) => {
-                                resolve({
-                                    'status': 200,
-                                    'msg': 'Reissuing the access token',
-                                    'data': {
-                                        'id': user_id,
-                                        'role': user_role,
-                                        'accessToken': accessToken,
-                                    }
-                                })
-                            },
-                            (err) => {
-                                console.log(`Error occurred while reissuing the access token: ${err}`)
-                                reject({
-                                    'status': 400,
-                                    'msg': `Error occurred while reissuing the access token.`,
-                                })
-                            }
-                        )
-                    },
-                    (err) => {
-                        console.log(`Refresh token is invalid`)
+        try {
+            getConnection(conn => {
+                console.log("connection_pool GET")
+                conn.query(selectTokenQuery, (err, results) => {
+                    if(err) {
+                        console.error('Get refresh token from db failed')
                         reject({
-                            'status': 400,
-                            'msg': `Both token is invalid. Please login again.`,
+                            'status': 500,
+                            'msg': 'Get refresh token from db failed'
                         })
                     }
-                )
-            }
-            else {
-                console.log(`Access token is invalid and Refresh token is null`)
-                reject({
-                    'status': 400,
-                    'msg': `Access token is invalid and Refresh token is null. Please login again`,
+                    else {
+                        if (results.length === 0) {
+                            console.log(`Access token is invalid and Refresh token is null`)
+                            reject({
+                                'status': 401,
+                                'msg': `Access token is invalid and Refresh token is null. Please login again`,
+                            })
+                        }
+                        else{
+                            refreshToken = results[0].user_token;
+                            user_role = results[0].user_role;
+                            const checkToken = new Promise(((resolve, reject) => {
+                                jwt.verify(refreshToken, jwt_secret, function (err, decoded) {
+                                    if (err) {
+                                        reject(err)
+                                    }
+                                    else {
+                                        resolve(refreshToken)
+                                    }
+                                })
+                            }))
+                            checkToken.then(
+                                (refreshToken) => {
+                                    console.log('Refresh token is valid')
+                                    createAccessToken(user_id, user_role).then(
+                                        (accessToken) => {
+                                            resolve({
+                                                'status': 200,
+                                                'msg': 'Reissuing the access token',
+                                                'data': {
+                                                    'id': user_id,
+                                                    'role': user_role,
+                                                    'accessToken': accessToken,
+                                                }
+                                            })
+                                        },
+                                        (err) => {
+                                            console.log(`Error occurred while reissuing the access token: ${err}`)
+                                            reject({
+                                                'status': 500,
+                                                'msg': `Error occurred while reissuing the access token.`,
+                                            })
+                                        }
+                                    )
+                                },
+                                (err) => {
+                                    console.log(`Refresh token is invalid`)
+                                    reject({
+                                        'status': 400,
+                                        'msg': `Both token is invalid. Please login again.`,
+                                    })
+                                }
+                            )
+                        }
+                    }
                 })
-            }
-        });
+                conn.release();
+            })
+        }
+        catch (err) {
+            reject({
+                'status': 500,
+                'msg': 'DB connection error'
+            })
+        }
     });
 }
 
@@ -145,33 +166,45 @@ exports.emailAuth = async (req, res, next) => {
         html: email_form_new
     }
     const selectQuery = query.selectQuery('user', ['user_id'], {'user_id': email});
-    connection.query(selectQuery, async function (error, check_result, fields) {
-        if (error) {
-            next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
-            return;
-        }
-        if (check_result.length > 0) {
-            next(ApiError.badRequest('Email is already registered'));
-        } else {
-            const result = await transporter.sendMail(mailOptions, (error, response) => {
-                if (error) {
-                    console.log(`Error occurred while sending member registration verification email for sign up : ${error}`)
-                    next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
-                } else {
-                    res.status(200).json({
-                        'status': 200,
-                        'msg': 'Successfully sending verification code by e-mail',
-                        'data': {
-                            'id': email,
-                            'role': 'user',
-                            'authNum': number,
-                        }
-                    })
+    try {
+        getConnection(conn => {
+            console.log("connection_pool GET")
+            conn.query(selectQuery, async (err, results) => {
+                if (err) {
+                    console.error(`error occurred during checking user_id from db: ${err}`)
+                    next(ApiError.internal('There is a problem with the server. Please try again in a few minutes.'));
                 }
-                transporter.close();
+                else {
+                    if (results.length === 0) {
+                        next(ApiError.badRequest('Email is already registered'));
+                    }
+                    else {
+                        const result = await transporter.sendMail(mailOptions, (error, response) => {
+                            if (error) {
+                                console.error(`Error occurred while sending member registration verification email for sign up : ${error}`)
+                                next(ApiError.internal('There is a problem with the server. Please try again in a few minutes.'));
+                            } else {
+                                console.log('Successfully sending verification code by e-mail')
+                                res.status(200).json({
+                                    'status': 200,
+                                    'msg': 'Successfully sending verification code by e-mail',
+                                    'data': {
+                                        'id': email,
+                                        'role': 'user',
+                                        'authNum': number,
+                                    }
+                                })
+                            }
+                            transporter.close();
+                        })
+                    }
+                }
             })
-        }
-    })
+            conn.release();
+        })
+    } catch (e) {
+        next(ApiError.internal(handleConnectionError(e)));
+    }
 }
 
 exports.emailCheck = async (req, res, next) => {
@@ -186,33 +219,45 @@ exports.emailCheck = async (req, res, next) => {
         html: email_form_new
     }
     const selectQuery = query.selectQuery('user', ['user_id'], {'user_id': email});
-    connection.query(selectQuery, async function (error, check_result, fields) {
-        if (error) {
-            next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
-            return;
-        }
-        if (check_result.length === 0) {
-            next(ApiError.badRequest('Email is not registered'));
-        } else {
-            const result = await transporter.sendMail(mailOptions, (error, response) => {
-                if (error) {
-                    console.log(`Error occurred while sending member registration verification email for reset pwd : ${error}`)
-                    next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
-                } else {
-                    res.status(200).json({
-                        'status': 200,
-                        'msg': 'Successfully sending verification code by e-mail',
-                        'data': {
-                            'id': email,
-                            'role': 'user',
-                            'authNum': number,
-                        }
-                    })
+    try {
+        getConnection(conn => {
+            console.log("connection_pool GET")
+            conn.query(selectQuery, async (err, results) => {
+                if (err) {
+                    console.error(`error occurred during checking user_id from db: ${err}`)
+                    next(ApiError.internal('There is a problem with the server. Please try again in a few minutes.'));
                 }
-                transporter.close();
+                else {
+                    if (results.length === 0) {
+                        next(ApiError.badRequest('Email is already registered'));
+                    }
+                    else {
+                        const result = await transporter.sendMail(mailOptions, (error, response) => {
+                            if (error) {
+                                console.error(`Error occurred while sending member registration verification email for sign up : ${error}`)
+                                next(ApiError.internal('There is a problem with the server. Please try again in a few minutes.'));
+                            } else {
+                                console.log('Successfully sending verification code by e-mail')
+                                res.status(200).json({
+                                    'status': 200,
+                                    'msg': 'Successfully sending verification code by e-mail',
+                                    'data': {
+                                        'id': email,
+                                        'role': 'user',
+                                        'authNum': number,
+                                    }
+                                })
+                            }
+                            transporter.close();
+                        })
+                    }
+                }
             })
-        }
-    })
+            conn.release();
+        })
+    } catch (e) {
+        next(ApiError.internal(handleConnectionError(e)));
+    }
 }
 
 exports.login = (req, res, next) => {
@@ -223,63 +268,77 @@ exports.login = (req, res, next) => {
 
     if (user_id) {
         const selectQuery = query.selectQuery('user', ['user_pwd', 'user_role'], {'user_id': user_id});
-        connection.query(selectQuery, function (error, results) {
-            if (error) {
-                console.log(error)
-                next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
-                return;
-            }
-            if (results.length > 0) {
-                console.log(results);
+        try {
+            getConnection(conn => {
+                console.log("connection_pool GET")
+                conn.query(selectQuery, function (error, results) {
+                    if (error) {
+                        console.error(`error occurred during getting user info from db: ${error}`)
+                        next(ApiError.internal('There is a problem with the server. Please try again in a few minutes.'));
+                    }
+                    else {
+                        if (results.length > 0) {
+                            const hash = crypto.createHmac('sha256', secret)
+                                .update(user_pwd)
+                                .digest('base64');
 
-                const hash = crypto.createHmac('sha256', secret)
-                    .update(user_pwd)
-                    .digest('base64');
+                            user_role = results[0].user_role;
 
-                user_role = results[0].user_role;
-
-                if (hash === results[0].user_pwd) {
-                    createAccessToken(user_id, user_role).then(
-                        (accessToken) => {
-                            setRefreshToken(user_id, user_role).then(
-                                (refreshToken) => {
-                                    checkTempPwdUser(user_id).then(
-                                        isTempUser => {
-                                            res.status(200).json({
-                                                'status': 200,
-                                                'msg': 'Login success',
-                                                'data': {
-                                                    'id': user_id,
-                                                    'role': user_role,
-                                                    'accessToken': accessToken,
-                                                    'isTempUser': isTempUser
-                                                }
-                                            });
-                                        },
-                                        err => {
-                                            next(ApiError.badRequest(err));
-                                        }
-                                    )
-                                },
-                                (err) => {
-                                    console.log('Login failure during setting refresh token');
-                                    next(ApiError.badRequest('There is a problem with the server. Please try again in a few minutes.'));
-                                }
-                            )
-                        },
-                        (err) => {
-                            console.log(err)
-                            next(ApiError.badRequest('Login failure'));
+                            if (hash === results[0].user_pwd) {
+                                createAccessToken(user_id, user_role).then(
+                                    (accessToken) => {
+                                        setRefreshToken(user_id, user_role).then(
+                                            (refreshToken) => {
+                                                checkTempPwdUser(user_id).then(
+                                                    isTempUser => {
+                                                        res.status(200).json({
+                                                            'status': 200,
+                                                            'msg': 'Login success',
+                                                            'data': {
+                                                                'id': user_id,
+                                                                'role': user_role,
+                                                                'accessToken': accessToken,
+                                                                'isTempUser': isTempUser
+                                                            }
+                                                        });
+                                                    },
+                                                    err => {
+                                                        if (err.status === 500) {
+                                                            next(ApiError.internal(err.msg))
+                                                        }
+                                                        else {
+                                                            next(ApiError.unauthorized(err.msg))
+                                                        }
+                                                    }
+                                                )
+                                            },
+                                            (err) => {
+                                                console.log(`Login failure during setting refresh token: ${err}`);
+                                                next(ApiError.internal('There is a problem with the server. Please try again in a few minutes.'));
+                                            }
+                                        )
+                                    },
+                                    (err) => {
+                                        console.log(`error occurred during create access token: ${err}`)
+                                        next(ApiError.internal('There is a problem with the server. Please try again in a few minutes.'));
+                                    }
+                                )
+                            } else {
+                                console.log('password is not matched')
+                                next(ApiError.unauthorized('Wrong password'));
+                            }
+                        } else {
+                            console.log('Email is not registered');
+                            next(ApiError.unauthorized('Email is not registered'));
                         }
-                    )
-                } else {
-                    next(ApiError.badRequest('Wrong password'));
-                }
-            } else {
-                console.log('Email is not registered');
-                next(ApiError.badRequest('Email is not registered'));
-            }
-        });
+                    }
+                });
+                conn.release();
+            })
+        }
+        catch (e) {
+            next(ApiError.internal(handleConnectionError(e)))
+        }
     } else {
         next(ApiError.badRequest('Please input email'));
     }
@@ -315,7 +374,13 @@ exports.check = (req, res, next) => {
                         },
                         (error) => {
                             console.log('Both access token and refresh token are invalid')
-                            next(ApiError.badRequest('Access token is invalid'));
+                            if (error.status === 500) {
+                                next(ApiError.internal(error.msg));
+                            } else if (error.status === 401) {
+                                next(ApiError.unauthorized(error.msg));
+                            } else {
+                                next(ApiError.badRequest(error.msg));
+                            }
                         }
                     )
                 }
@@ -329,7 +394,13 @@ exports.check = (req, res, next) => {
             },
             (error) => {
                 console.log('Reissuing access token failure')
-                next(ApiError.badRequest(error.msg));
+                if (error.status === 500) {
+                    next(ApiError.internal(error.msg));
+                } else if (error.status === 401) {
+                    next(ApiError.unauthorized(error.msg));
+                } else {
+                    next(ApiError.badRequest(error.msg));
+                }
             }
         )
     }
@@ -408,6 +479,7 @@ exports.isLogin = (req, res, next) => {
     }
 }
 
+// 이거 처리 (http status code)
 exports.checkLogin = (user_id, accessToken) => {
     let isUserNotMatched = false;
     return new Promise((resolve, reject) => {
@@ -428,6 +500,7 @@ exports.checkLogin = (user_id, accessToken) => {
     });
 }
 
+// 이거 처리 (http status code)
 exports.checkAdmin = (id, accessToken) => {
     return new Promise((resolve, reject) => {
         const checkToken = new Promise((resolve, reject) => {
@@ -477,25 +550,43 @@ exports.checkTempUser = (email) => {
 function checkTempPwdUser(email) {
     return new Promise(((resolve, reject) => {
         const checkTempUserQuery = query.selectQuery('user', ['user_reset'], {'user_id': email})
-        connection.query(checkTempUserQuery, function (error, results) {
-            if (error) {
-                console.log(`Error occurred during reset password : ${error}`);
-                reject('There is a problem with the server. Please try again in a few minutes.')
-            }
-            else if (results.length > 0) {
-                const isTempUser = results[0]['user_reset'];
-                if (isTempUser === 1) {
-                    resolve(true)
-                }
-                else {
-                    console.log('This user does not have a temporary password.')
-                    resolve(false)
-                }
-            }
-            else {
-                console.log('This email is not registered')
-                reject('This email is not registered')
-            }
-        })
+        try {
+            getConnection(conn => {
+                conn.query(checkTempUserQuery, function (error, results) {
+                    if (error) {
+                        console.log(`Error occurred during reset password : ${error}`);
+                        reject({
+                            status: 500,
+                            msg: 'There is a problem with the server. Please try again in a few minutes.'
+                        })
+                    }
+                    else if (results.length > 0) {
+                        const isTempUser = results[0]['user_reset'];
+                        if (isTempUser === 1) {
+                            resolve(true)
+                        }
+                        else {
+                            console.log('This user does not have a temporary password.')
+                            resolve(false)
+                        }
+                    }
+                    else {
+                        console.log('This email is not registered')
+                        reject({
+                            status: 401,
+                            msg: 'This email is not registered'
+                        })
+                    }
+                })
+                conn.release();
+            })
+
+        }
+        catch (e) {
+            reject({
+                status: 500,
+                msg: e
+            })
+        }
     }))
 }

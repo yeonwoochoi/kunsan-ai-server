@@ -1,6 +1,7 @@
 const mysql = require('mysql');
 const config = require('../../config/config');
-const connection = mysql.createConnection(config.SQL);
+const dbConfig = require('../../config/db_config');
+const connection = mysql.createConnection(dbConfig.SQL);
 const crypto = require('crypto');
 const jwt = require("jsonwebtoken");
 const secret = config.KEY.secret;
@@ -188,7 +189,12 @@ exports.resetPwd = (req, res, next) => {
             }
         },
         err => {
-            next(ApiError.badRequest(err));
+            if (err.status === 500) {
+                next(ApiError.internal(err.msg))
+            }
+            else {
+                next(ApiError.unauthorized(err.msg))
+            }
         }
     )
 }

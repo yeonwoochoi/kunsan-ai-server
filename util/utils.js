@@ -1,6 +1,7 @@
 const mysql = require('mysql');
 const config = require('../config/config');
-const connection = mysql.createConnection(config.SQL);
+const dbConfig = require('../config/db_config');
+const connection = mysql.createConnection(dbConfig.SQL);
 const { dirname } = require('path');
 const fs = require("fs");
 const { constants, promises: { access } } = require('fs');

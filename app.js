@@ -27,6 +27,7 @@ app.use('/projects', require('./api/projects/project'));
 app.use('/publications', require('./api/publication/publication'));
 app.use('/member', require('./api/member/member'));
 app.use('/professor', require('./api/professor/professor'));
+app.use('/test', require('./api/test/test'));
 
 app.use(apiErrorHandler);
 

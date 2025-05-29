@@ -1,6 +1,6 @@
 const mysql = require('mysql');
-const config = require('../../config/config');
-const connection = mysql.createConnection(config.SQL);
+const dbConfig = require('../../config/db_config');
+const connection = mysql.createConnection(dbConfig.SQL);
 const query = require('../../config/query')
 const ApiError = require("../error/api-error");
 const {checkAdmin, checkLogin} = require("../auth/auth.controller");
